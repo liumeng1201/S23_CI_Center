@@ -17,6 +17,10 @@ jobs:
           ADMIN_TOKEN: ${{ secrets.ADMIN_TOKEN }}
           COMMIT_MESSAGE: ${{ github.event.inputs.commit_message }}
         run: |
+          # 在脚本开始时就设置好 Git 用户信息
+          git config --global user.name "GitHub Actions Setup"
+          git config --global user.email "actions@github.com"
+
           TARGET_BRANCHES=("main" "ksu" "mksu" "sukisuultra")
           for project_key in $(jq -r 'keys[]' configs/projects.json); do
             PROJECT_REPO=$(jq -r --arg PKEY "$project_key" '.[$PKEY].repo' configs/projects.json)
