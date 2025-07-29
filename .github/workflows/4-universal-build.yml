@@ -68,9 +68,9 @@ jobs:
           echo "PROJECT_ANYKERNEL_REPO=$(echo $CONFIG_JSON | jq -r .anykernel_repo)" >> $GITHUB_ENV
           echo "PROJECT_ANYKERNEL_BRANCH=$(echo $CONFIG_JSON | jq -r .anykernel_branch)" >> $GITHUB_ENV
           echo "PROJECT_ZIP_NAME_PREFIX=$(echo $CONFIG_JSON | jq -r .zip_name_prefix)" >> $GITHUB_ENV
-          echo "PROJECT_VERSION_METHOD=$(echo $CONFIG_JSON | jq -r .version_method // "param")" >> $GITHUB_ENV
-          echo "PROJECT_EXTRA_HOST_ENV=$(echo $CONFIG_JSON | jq -r .extra_host_env // "false")" >> $GITHUB_ENV
-          echo "PROJECT_DISABLE_SECURITY=$(echo $CONFIG_JSON | jq -c .disable_security // "[]")" >> $GITHUB_ENV
+          echo "PROJECT_VERSION_METHOD=$(echo $CONFIG_JSON | jq -r '.version_method // "param"')" >> $GITHUB_ENV
+          echo "PROJECT_EXTRA_HOST_ENV=$(echo $CONFIG_JSON | jq -r '.extra_host_env // "false"')" >> $GITHUB_ENV
+          echo "PROJECT_DISABLE_SECURITY=$(echo $CONFIG_JSON | jq -c '.disable_security // []')" >> $GITHUB_ENV
 
       - name: Checkout Kernel Repository
         uses: actions/checkout@v4
