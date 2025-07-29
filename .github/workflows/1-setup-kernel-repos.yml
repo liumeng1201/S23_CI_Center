@@ -17,26 +17,40 @@ jobs:
           ADMIN_TOKEN: ${{ secrets.ADMIN_TOKEN }}
           COMMIT_MESSAGE: ${{ github.event.inputs.commit_message }}
         run: |
+          TARGET_BRANCHES=("main" "ksu" "mksu" "sukisuultra")
           for project_key in $(jq -r 'keys[]' configs/projects.json); do
             PROJECT_REPO=$(jq -r --arg PKEY "$project_key" '.[$PKEY].repo' configs/projects.json)
             echo "--- Processing: $PROJECT_REPO ---"
             git clone "https://x-access-token:$ADMIN_TOKEN@github.com/$PROJECT_REPO.git" "temp_kernel"
             cd temp_kernel
-            echo "Cleaning up old CI files..."
-            rm -rf .github/workflows build*.sh update-kernelsu.yml
-            echo "Creating new trigger workflow from template..."
-            mkdir -p .github/workflows
-            cp ../templates/trigger-central-build.yml.tpl .github/workflows/trigger-central-build.yml
-            sed -i "s|__PROJECT_KEY__|${project_key}|g" .github/workflows/trigger-central-build.yml
-            sed -i "s|__REPO_OWNER__|${{ github.repository_owner }}|g" .github/workflows/trigger-central-build.yml
-            git config --global user.name "GitHub Actions Setup" && git config --global user.email "actions@github.com"
-            if [[ -n $(git status --porcelain) ]]; then
-              echo "Found changes, committing..."
-              git add .
-              git commit -m "$COMMIT_MESSAGE"
-              git push
-            else
-              echo "No changes needed."
-            fi
+
+            REMOTE_BRANCHES=$(git branch -r | sed 's|origin/||' | grep -v 'HEAD ->')
+
+            for branch in "${TARGET_BRANCHES[@]}"; do
+              if echo "$REMOTE_BRANCHES" | grep -q "^ *${branch}$"; then
+                echo "Configuring branch: $branch"
+                git checkout "$branch"
+
+                echo "Cleaning up old CI files..."
+                rm -rf .github/workflows build*.sh update-kernelsu.yml
+
+                echo "Creating new trigger workflow from template..."
+                mkdir -p .github/workflows
+                cp ../templates/trigger-central-build.yml.tpl .github/workflows/trigger-central-build.yml
+                sed -i "s|__PROJECT_KEY__|${project_key}|g" .github/workflows/trigger-central-build.yml
+                sed -i "s|__REPO_OWNER__|${{ github.repository_owner }}|g" .github/workflows/trigger-central-build.yml
+
+                if [[ -n $(git status --porcelain) ]]; then
+                  git add .
+                  git commit -m "$COMMIT_MESSAGE (branch: $branch)"
+                fi
+              else
+                echo "Branch '$branch' not found in $PROJECT_REPO, skipping."
+              fi
+            done
+
+            echo "Pushing all updated branches..."
+            git push --all
+
             cd .. && rm -rf temp_kernel
           done

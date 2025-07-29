@@ -16,7 +16,14 @@ IS_PRERELEASE="${IS_PRERELEASE_INPUT:?IS_PRERELEASE_INPUT 未设置}"
 VERSION_METHOD="${PROJECT_VERSION_METHOD:-param}"
 EXTRA_HOST_ENV="${PROJECT_EXTRA_HOST_ENV:-false}"
 DISABLE_SECURITY_JSON="${PROJECT_DISABLE_SECURITY:-[]}"
-PATCH_LINUX="${PROJECT_PATCH_LINUX:-true}"
+
+# --- 动态决定是否运行 patch_linux ---
+DO_PATCH_LINUX=false
+if [[ "$BRANCH_NAME" == "sukisuultra" ]]; then
+  if [[ "$PROJECT_KEY" == "s24_sm8650" || "$PROJECT_KEY" == "s25_sm8750" || "$PROJECT_KEY" == "tabs10_mt6989" ]]; then
+    DO_PATCH_LINUX=true
+  fi
+fi
 
 # --- 脚本开始 ---
 cd "$(dirname "$0")"
@@ -82,7 +89,7 @@ cd out
 git clone --depth=1 "${ANYKERNEL_REPO}" -b "${ANYKERNEL_BRANCH}" AnyKernel3
 cp arch/arm64/boot/Image AnyKernel3/Image
 cd AnyKernel3
-if [ "$PATCH_LINUX" == "false" ]; then echo "--- 根据配置，跳过 patch_linux ---"; rm -f patch_linux; fi
+if [ "$DO_PATCH_LINUX" == "false" ]; then echo "--- 根据配置，跳过 patch_linux ---"; rm -f patch_linux; fi
 if [ -f "patch_linux" ]; then chmod +x ./patch_linux && ./patch_linux && mv oImage zImage && rm -f Image oImage patch_linux; else mv Image zImage; fi
 kernel_release=$(cat ../include/config/kernel.release)
 final_name="${ZIP_NAME_PREFIX}_${kernel_release}_${BRANCH_NAME}_$(date '+%Y%m%d')"
