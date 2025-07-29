@@ -55,8 +55,7 @@ jobs:
           echo "IS_PRERELEASE_INPUT=${IS_PRERELEASE_INPUT}" >> $GITHUB_ENV
           CONFIG_JSON=$(cat ${{ github.workspace }}/configs/projects.json | jq -r --arg PKEY "$PROJECT_KEY" '.[$PKEY]')
           if [ -z "$CONFIG_JSON" ] || [ "$CONFIG_JSON" == "null" ]; then echo "错误: 未找到项目 '$PROJECT_KEY' 的配置。"; exit 1; fi
-
-          # 使用更安全的方式设置环境变量
+          
           echo "PROJECT_REPO=$(echo $CONFIG_JSON | jq -r .repo)" >> $GITHUB_ENV
           echo "PROJECT_DEFCONFIG=$(echo $CONFIG_JSON | jq -r .defconfig)" >> $GITHUB_ENV
           echo "PROJECT_LOCALVERSION_BASE=$(echo $CONFIG_JSON | jq -r .localversion_base)" >> $GITHUB_ENV
@@ -75,10 +74,12 @@ jobs:
       - name: Checkout Kernel Repository
         uses: actions/checkout@v4
         with: { repository: "${{ env.PROJECT_REPO }}", ref: "${{ env.BRANCH_NAME }}", path: kernel_source, submodules: 'recursive' }
+      
       - name: Cache Toolchain
         id: toolchain-cache
         uses: actions/cache@v4
         with: { path: kernel_source/toolchain, key: "${{ runner.os }}-toolchain-${{ env.PROJECT_KEY }}" }
+      
       - name: Download and Extract Toolchain
         if: steps.toolchain-cache.outputs.cache-hit != 'true'
         working-directory: kernel_source
@@ -96,6 +97,7 @@ jobs:
           cat $PART_FILES > toolchain.tar.gz
           mkdir -p ./toolchain && tar -xzvf toolchain.tar.gz -C ./toolchain/
           rm $PART_FILES toolchain.tar.gz
+      
       - name: Cache ccache
         uses: actions/cache@v4
         with:
@@ -103,10 +105,30 @@ jobs:
           key: ${{ runner.os }}-ccache-${{ env.PROJECT_KEY }}-${{ env.BRANCH_NAME }}
           restore-keys: |
             ${{ runner.os }}-ccache-${{ env.PROJECT_KEY }}-
+
+      # 新增：在构建流程中直接设置 KernelSU
+      - name: Setup KernelSU based on branch
+        working-directory: ./kernel_source
+        run: |
+          echo "当前分支是: ${{ env.BRANCH_NAME }}"
+          if [[ "${{ env.BRANCH_NAME }}" == "sukisuultra" ]]; then
+            echo "正在为 sukisuultra 分支设置 KernelSU..."
+            curl -LSs "https://raw.githubusercontent.com/SukiSU-Ultra/SukiSU-Ultra/main/kernel/setup.sh" | bash -s susfs-main
+          elif [[ "${{ env.BRANCH_NAME }}" == "mksu" ]]; then
+            echo "正在为 mksu 分支设置 KernelSU..."
+            curl -LSs "https://raw.githubusercontent.com/5ec1cff/KernelSU/main/kernel/setup.sh" | bash -
+          elif [[ "${{ env.BRANCH_NAME }}" == "ksu" ]]; then
+            echo "正在为 ksu 分支设置 KernelSU..."
+            curl -LSs "https://raw.githubusercontent.com/tiann/KernelSU/main/kernel/setup.sh" | bash -
+          else
+            echo "当前分支 ($BRANCH_NAME) 不需要设置 KernelSU，跳过此步骤。"
+          fi
+          echo "KernelSU 设置步骤完成。"
+
       - name: Run Universal Build Script
         env: { GH_TOKEN: "${{ secrets.GH_TOKEN }}" }
         run: |
-          cp ../scripts/build.sh ./kernel_source/
+          cp scripts/build.sh ./kernel_source/
           cd ./kernel_source
           chmod +x ./build.sh
           ./build.sh
