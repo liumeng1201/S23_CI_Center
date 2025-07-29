@@ -113,7 +113,7 @@ if [ "$DO_PATCH_LINUX" == "false" ]; then echo "--- 根据配置，跳过 patch_
 if [ -f "patch_linux" ]; then chmod +x ./patch_linux && ./patch_linux && mv oImage zImage && rm -f Image oImage patch_linux; else mv Image zImage; fi
 kernel_release=$(cat ../include/config/kernel.release)
 final_name="${ZIP_NAME_PREFIX}_${kernel_release}_${VERSION_SUFFIX}_$(date '+%Y%m%d')"
-zip -r9 "../${final_name}.zip" . -x "*.zip" -x "tools/*" -x "README.md" -x "LICENSE" -x '.*' -x '*/.*'
+zip -r9 "../${final_name}.zip" . -x "*.zip" -x "tools/boot.img.lz4" -x "tools/libmagiskboot.so" -x "README.md" -x "LICENSE" -x '.*' -x '*/.*'
 cd ../..
 
 # 7. 发布
