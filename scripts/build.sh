@@ -25,6 +25,25 @@ if [[ "$BRANCH_NAME" == "sukisuultra" ]]; then
   fi
 fi
 
+# --- 根据分支名生成版本后缀 ---
+case "$BRANCH_NAME" in
+  main)
+    VERSION_SUFFIX="LKM"
+    ;;
+  ksu)
+    VERSION_SUFFIX="KSU"
+    ;;
+  mksu)
+    VERSION_SUFFIX="MKSU"
+    ;;
+  sukisuultra)
+    VERSION_SUFFIX="SukiSUU"
+    ;;
+  *)
+    VERSION_SUFFIX="$BRANCH_NAME" # 如果有其他分支，则直接使用分支名
+    ;;
+esac
+
 # --- 脚本开始 ---
 cd "$(dirname "$0")"
 TOOLCHAIN_BASE_PATH=$(realpath "./toolchain/${TOOLCHAIN_PATH_PREFIX}")
@@ -66,11 +85,12 @@ done
 if [ -n "$LTO" ]; then ./scripts/config --file out/.config -e LTO_CLANG_${LTO^^} -d LTO_CLANG_THIN -d LTO_CLANG_FULL; fi
 
 # 4. 设置版本号
+FINAL_LOCALVERSION="${LOCALVERSION_BASE}-${VERSION_SUFFIX}"
 if [ "$VERSION_METHOD" == "file" ]; then
-    echo "${LOCALVERSION_BASE}-${BRANCH_NAME}-g$(git rev-parse --short HEAD)" > ./localversion
+    echo "${FINAL_LOCALVERSION}-g$(git rev-parse --short HEAD)" > ./localversion
     MAKE_ARGS+=""
 else
-    MAKE_ARGS+=" LOCALVERSION=${LOCALVERSION_BASE}-${BRANCH_NAME}"
+    MAKE_ARGS+=" LOCALVERSION=${FINAL_LOCALVERSION}"
 fi
 
 # 5. 编译内核
@@ -92,7 +112,7 @@ cd AnyKernel3
 if [ "$DO_PATCH_LINUX" == "false" ]; then echo "--- 根据配置，跳过 patch_linux ---"; rm -f patch_linux; fi
 if [ -f "patch_linux" ]; then chmod +x ./patch_linux && ./patch_linux && mv oImage zImage && rm -f Image oImage patch_linux; else mv Image zImage; fi
 kernel_release=$(cat ../include/config/kernel.release)
-final_name="${ZIP_NAME_PREFIX}_${kernel_release}_${BRANCH_NAME}_$(date '+%Y%m%d')"
+final_name="${ZIP_NAME_PREFIX}_${kernel_release}_${VERSION_SUFFIX}_$(date '+%Y%m%d')"
 zip -r9 "../${final_name}.zip" . -x "*.zip" -x "tools/*" -x "README.md" -x "LICENSE" -x '.*' -x '*/.*'
 cd ../..
 
@@ -101,8 +121,8 @@ if [ "$AUTO_RELEASE" != "true" ]; then echo "--- 已跳过自动发布 ---"; exi
 echo -e "\n--- 开始发布到 GitHub Release ---"
 if ! command -v gh &> /dev/null; then echo "错误: 未找到 'gh' 命令。"; exit 1; fi
 if [ -z "$GH_TOKEN" ]; then echo "错误: 环境变量 'GH_TOKEN' 未设置。"; exit 1; fi
-TAG="release-${BRANCH_NAME}-$(date +%Y%m%d-%H%M%S)"
-RELEASE_TITLE="新内核构建 - ${kernel_release} (${BRANCH_NAME} | $(date +'%Y-%m-%d %R'))"
+TAG="release-${VERSION_SUFFIX}-$(date +%Y%m%d-%H%M%S)"
+RELEASE_TITLE="新内核构建 - ${kernel_release} (${VERSION_SUFFIX} | $(date +'%Y-%m-%d %R'))"
 RELEASE_NOTES="由通用构建流程在 $(date) 自动发布。"
 PRERELEASE_FLAG=""
 if [ "$IS_PRERELEASE" == "true" ]; then PRERELEASE_FLAG="--prerelease"; RELEASE_TITLE="[预发布] ${RELEASE_TITLE}"; fi
