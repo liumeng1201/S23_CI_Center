@@ -93,7 +93,7 @@
 
   2. **自动触发**: 由内核仓库的 `push` 事件通过 `repository_dispatch` 触发。
 
-* **流程**: 解析 `projects.json` 获取配置 -> 检出内核源码 -> 下载并缓存工具链 -> **(新)** 运行 `setup.sh` 注入 KernelSU -> **(新)** `git add .` 避免 `-dirty` -> 运行通用构建脚本 -> 发布到 Release。
+* **流程**: 解析 `projects.json` 获取配置 -> 检出内核源码 -> 下载并缓存工具链 -> 运行 `setup.sh` 注入 KernelSU -> 运行通用构建脚本 -> 发布到 Release。
 
 ## 安装与设置指南
 
