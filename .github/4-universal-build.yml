@@ -1,0 +1,96 @@
+name: 4. Universal Kernel Builder
+on:
+  workflow_dispatch:
+    inputs:
+      project:
+        description: '选择要编译的内核项目'
+        required: true
+        type: choice
+        options: [s23_sm8550, s24_sm8650, s25_sm8750, tabs10_mt6989]
+      branch:
+        description: '选择要编译的分支'
+        required: true
+        type: choice
+        options: [main, sukisuultra, mksu, ksu]
+        default: 'main'
+      do_release:
+        description: '是否创建 GitHub Release?'
+        required: true
+        type: boolean
+        default: true
+      is_prerelease:
+        description: '如果创建 Release, 是否标记为预发布?'
+        required: true
+        type: boolean
+        default: true
+  repository_dispatch:
+    types: [build-kernel]
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    env: { CCACHE_DIR: "${{ github.workspace }}/.ccache" }
+    steps:
+      - { uses: actions/checkout@v4 }
+      - name: Install Dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y build-essential git libncurses5-dev bc bison flex libssl-dev p7zip-full lz4 cpio curl libelf-dev dwarves ccache jq
+      - name: Parse Project Configuration
+        id: config
+        run: |
+          if [ "${{ github.event_name }}" == "workflow_dispatch" ]; then
+            PROJECT_KEY="${{ github.event.inputs.project }}"
+            BRANCH_NAME="${{ github.event.inputs.branch }}"
+            DO_RELEASE="${{ github.event.inputs.do_release }}"
+            IS_PRERELEASE_INPUT="${{ github.event.inputs.is_prerelease }}"
+          else
+            PROJECT_KEY="${{ github.event.client_payload.project }}"
+            BRANCH_NAME="${{ github.event.client_payload.branch }}"
+            DO_RELEASE="true"
+            IS_PRERELEASE_INPUT="true"
+          fi
+          echo "PROJECT_KEY=${PROJECT_KEY}" >> $GITHUB_ENV
+          echo "BRANCH_NAME=${BRANCH_NAME}" >> $GITHUB_ENV
+          echo "DO_RELEASE=${DO_RELEASE}" >> $GITHUB_ENV
+          echo "IS_PRERELEASE_INPUT=${IS_PRERELEASE_INPUT}" >> $GITHUB_ENV
+          CONFIG_JSON=$(cat configs/projects.json | jq -r --arg PKEY "$PROJECT_KEY" '.[$PKEY]')
+          if [ -z "$CONFIG_JSON" ] || [ "$CONFIG_JSON" == "null" ]; then echo "错误: 未找到项目 '$PROJECT_KEY' 的配置。"; exit 1; fi
+          jq -r 'to_entries | .[] | "PROJECT_\(.key | ascii_upcase)=\(.value | @json)"' <<< "$CONFIG_JSON" >> $GITHUB_ENV
+      - name: Checkout Kernel Repository
+        uses: actions/checkout@v4
+        with: { repository: "${{ env.PROJECT_REPO }}", ref: "${{ env.BRANCH_NAME }}", path: kernel_source, submodules: 'recursive' }
+      - name: Cache Toolchain
+        id: toolchain-cache
+        uses: actions/cache@v4
+        with: { path: kernel_source/toolchain, key: "${{ runner.os }}-toolchain-${{ env.PROJECT_KEY }}" }
+      - name: Download and Extract Toolchain
+        if: steps.toolchain-cache.outputs.cache-hit != 'true'
+        working-directory: kernel_source
+        run: |
+          echo "未找到工具链缓存，开始下载..."
+          URLS=$(echo '${{ env.PROJECT_TOOLCHAIN_URLS }}' | jq -r '.[]')
+          PART_FILES=""
+          i=0
+          for url in $URLS; do
+            part_file="toolchain.part$i"
+            wget -O "$part_file" "$url"
+            PART_FILES="$PART_FILES $part_file"
+            i=$((i+1))
+          done
+          cat $PART_FILES > toolchain.tar.gz
+          mkdir -p ./toolchain && tar -xzvf toolchain.tar.gz -C ./toolchain/
+          rm $PART_FILES toolchain.tar.gz
+      - name: Cache ccache
+        uses: actions/cache@v4
+        with:
+          path: ${{ env.CCACHE_DIR }}
+          key: ${{ runner.os }}-ccache-${{ env.PROJECT_KEY }}-${{ env.BRANCH_NAME }}
+          restore-keys: |
+            ${{ runner.os }}-ccache-${{ env.PROJECT_KEY }}-
+      - name: Run Universal Build Script
+        env: { GH_TOKEN: "${{ secrets.GH_TOKEN }}" }
+        run: |
+          cp ../scripts/build.sh ./kernel_source/
+          cd ./kernel_source
+          chmod +x ./build.sh
+          ./build.sh

@@ -1,0 +1,62 @@
+# .github/workflows/3-upstream-watcher.yml
+name: 3. Watch Upstream KernelSU
+on:
+  schedule:
+    - cron: '0 * * * *'
+  workflow_dispatch:
+jobs:
+  check_and_update:
+    runs-on: ubuntu-latest
+    permissions: { contents: write }
+    steps:
+      - { uses: actions/checkout@v4, with: { token: "${{ secrets.ADMIN_TOKEN }}" } }
+      - { run: "sudo apt-get install -y jq" }
+      - name: Check Upstream Repositories
+        id: check
+        run: |
+          declare -A KSU_UPSTREAMS
+          KSU_UPSTREAMS["ksu"]="https://github.com/tiann/KernelSU.git"
+          KSU_UPSTREAMS["mksu"]="https://github.com/5ec1cff/KernelSU.git"
+          KSU_UPSTREAMS["sukisuultra"]="https://github.com/SukiSU-Ultra/SukiSU-Ultra.git"
+          
+          declare -A KSU_BRANCHES
+          KSU_BRANCHES["ksu"]="main"
+          KSU_BRANCHES["mksu"]="main"
+          KSU_BRANCHES["sukisuultra"]="susfs-main"
+
+          ANY_UPDATES="false"
+          for ksu_type in "${!KSU_UPSTREAMS[@]}"; do
+            UPSTREAM_REPO_URL="${KSU_UPSTREAMS[$ksu_type]}"
+            UPSTREAM_BRANCH="${KSU_BRANCHES[$ksu_type]}"
+            echo "--- 正在检查: $ksu_type (分支: $UPSTREAM_BRANCH) ---"
+            LATEST_COMMIT=$(git ls-remote "$UPSTREAM_REPO_URL" "$UPSTREAM_BRANCH" | cut -f1)
+            LAST_KNOWN_COMMIT=$(jq -r --arg KTYPE "$ksu_type" '.[$KTYPE]' ../configs/upstream_commits.json)
+            if [ "$LATEST_COMMIT" != "$LAST_KNOWN_COMMIT" ]; then
+              echo "发现新版本！开始更新..."
+              ANY_UPDATES="true"
+              for project_key in $(jq -r 'keys[]' ../configs/projects.json); do
+                supports_ksu=$(jq -r --arg PKEY "$project_key" --arg KTYPE "$ksu_type" '.[$PKEY].supported_ksu | index($KTYPE)' ../configs/projects.json)
+                if [ "$supports_ksu" != "null" ]; then
+                  PROJECT_REPO=$(jq -r --arg PKEY "$project_key" '.[$PKEY].repo' ../configs/projects.json)
+                  echo "正在为项目 '$project_key' 更新..."
+                  git clone --depth=1 --branch "$ksu_type" "https://x-access-token:${{ secrets.ADMIN_TOKEN }}@github.com/$PROJECT_REPO.git" "temp_kernel"
+                  cd temp_kernel
+                  echo "同步 .gitignore 文件..."
+                  cp ../configs/universal.gitignore ./.gitignore
+                  if [[ "$ksu_type" == "sukisuultra" ]]; then curl -LSs "https://raw.githubusercontent.com/SukiSU-Ultra/SukiSU-Ultra/main/kernel/setup.sh" | bash -s susfs-main; else curl -LSs "${UPSTREAM_REPO_URL%.git}/raw/main/kernel/setup.sh" | bash -; fi
+                  git config --global user.name "GitHub Actions Watcher" && git config --global user.email "actions@github.com"
+                  if [[ -n $(git status --porcelain) ]]; then git add .; git commit -m "ci: 自动更新 $ksu_type 至 ${LATEST_COMMIT:0:7}"; git push; fi
+                  cd .. && rm -rf temp_kernel
+                fi
+              done
+              jq --arg KTYPE "$ksu_type" --arg LCOMMIT "$LATEST_COMMIT" '.[$KTYPE] = $LCOMMIT' ../configs/upstream_commits.json > tmp.json && mv tmp.json ../configs/upstream_commits.json
+            fi
+          done
+          echo "any_updates=$ANY_UPDATES" >> $GITHUB_OUTPUT
+      - name: Commit and Push Upstream Commit File
+        if: steps.check.outputs.any_updates == 'true'
+        run: |
+          git config --global user.name "GitHub Actions Watcher" && git config --global user.email "actions@github.com"
+          git add ../configs/upstream_commits.json
+          git commit -m "ci: 更新上游 KernelSU commit 记录"
+          git push
