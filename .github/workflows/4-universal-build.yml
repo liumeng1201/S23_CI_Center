@@ -1,3 +1,4 @@
+# .github/workflows/4-universal-build.yml
 name: 4. Universal Kernel Builder
 on:
   workflow_dispatch:
@@ -106,7 +107,36 @@ jobs:
           restore-keys: |
             ${{ runner.os }}-ccache-${{ env.PROJECT_KEY }}-
 
-      # 新增：在构建流程中直接设置 KernelSU
+      # 修正：为 AnyKernel3 缓存增加版本控制
+      - name: Get AnyKernel3 Remote Commit Hash
+        id: get_ak3_hash
+        run: |
+          HASH=$(git ls-remote ${{ env.PROJECT_ANYKERNEL_REPO }} ${{ env.PROJECT_ANYKERNEL_BRANCH }} | cut -f1)
+          if [ -z "$HASH" ]; then
+            echo "Error: Could not get remote commit hash for AnyKernel3."
+            exit 1
+          fi
+          echo "AnyKernel3 remote hash: $HASH"
+          echo "hash=$HASH" >> $GITHUB_OUTPUT
+
+      - name: Cache AnyKernel3 Repository
+        uses: actions/cache@v4
+        id: anykernel-cache
+        with:
+          path: anykernel_repo
+          key: anykernel-${{ env.PROJECT_KEY }}-${{ steps.get_ak3_hash.outputs.hash }}
+          restore-keys: |
+            anykernel-${{ env.PROJECT_KEY }}-
+
+      - name: Checkout AnyKernel3 if cache not hit
+        if: steps.anykernel-cache.outputs.cache-hit != 'true'
+        uses: actions/checkout@v4
+        with:
+          repository: ${{ env.PROJECT_ANYKERNEL_REPO }}
+          ref: ${{ env.PROJECT_ANYKERNEL_BRANCH }}
+          path: anykernel_repo
+          depth: 1
+
       - name: Setup KernelSU based on branch
         working-directory: ./kernel_source
         run: |
