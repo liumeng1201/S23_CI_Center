@@ -66,7 +66,6 @@ jobs:
           echo "PROJECT_TOOLCHAIN_PATH_PREFIX=$(echo $CONFIG_JSON | jq -r .toolchain_path_prefix)" >> $GITHUB_ENV
           echo "PROJECT_TOOLCHAIN_PATH_EXPORTS=$(echo $CONFIG_JSON | jq -c .toolchain_path_exports)" >> $GITHUB_ENV
           
-          # 修正：同时导出完整的 URL 和 owner/repo 格式
           ANYKERNEL_REPO_URL=$(echo $CONFIG_JSON | jq -r .anykernel_repo)
           echo "PROJECT_ANYKERNEL_REPO=${ANYKERNEL_REPO_URL}" >> $GITHUB_ENV
           ANYKERNEL_REPO_SLUG=$(echo "$ANYKERNEL_REPO_URL" | sed 's|https://github.com/||' | sed 's|\.git$||')
@@ -116,12 +115,8 @@ jobs:
       - name: Get AnyKernel3 Remote Commit Hash
         id: get_ak3_hash
         run: |
-          # 使用完整的 URL 来获取远程 hash
           HASH=$(git ls-remote ${{ env.PROJECT_ANYKERNEL_REPO }} ${{ env.PROJECT_ANYKERNEL_BRANCH }} | cut -f1)
-          if [ -z "$HASH" ]; then
-            echo "Error: Could not get remote commit hash for AnyKernel3."
-            exit 1
-          fi
+          if [ -z "$HASH" ]; then echo "Error: Could not get remote commit hash for AnyKernel3."; exit 1; fi
           echo "AnyKernel3 remote hash: $HASH"
           echo "hash=$HASH" >> $GITHUB_OUTPUT
 
@@ -138,11 +133,9 @@ jobs:
         if: steps.anykernel-cache.outputs.cache-hit != 'true'
         uses: actions/checkout@v4
         with:
-          # 修正：使用 owner/repo 格式
           repository: ${{ env.PROJECT_ANYKERNEL_REPO_SLUG }}
           ref: ${{ env.PROJECT_ANYKERNEL_BRANCH }}
           path: anykernel_repo
-          # 修正：使用 fetch-depth
           fetch-depth: 1
 
       - name: Setup KernelSU based on branch
@@ -164,9 +157,21 @@ jobs:
           echo "KernelSU 设置步骤完成。"
 
       - name: Run Universal Build Script
+        id: build_script
         env: { GH_TOKEN: "${{ secrets.GH_TOKEN }}" }
         run: |
           cp scripts/build.sh ./kernel_source/
           cd ./kernel_source
           chmod +x ./build.sh
           ./build.sh
+
+      # 新增：无论成功与否，都上传构建产物
+      - name: Upload Build Artifacts
+        if: always() # 确保此步骤总是运行
+        uses: actions/upload-artifact@v4
+        with:
+          name: build-artifacts-${{ env.PROJECT_KEY }}-${{ env.BRANCH_NAME }}-${{ github.run_id }}
+          path: |
+            kernel_source/out/*.zip
+            kernel_source/kernel_build_log.txt
+          retention-days: 7 # 将产物保留7天
