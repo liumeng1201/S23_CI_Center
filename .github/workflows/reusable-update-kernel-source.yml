@@ -71,7 +71,7 @@ jobs:
             if [[ "$KSU_TYPE" == "sukisuultra" ]]; then
               curl -LSs "$SETUP_URL" | bash -s susfs-main
             else
-              curl -LSs "$SETUP_URL" | bash -
+              curl -LSs "$SETUP_URL" | bash -s main
             fi
             
             git config --global user.name "GitHub Actions"
