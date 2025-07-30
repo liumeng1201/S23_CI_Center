@@ -91,19 +91,20 @@ jobs:
         uses: actions/download-artifact@v4
         with:
           name: upstream-commits
-          path: configs
+          path: configs # Download and overwrite the file in the configs directory
       - name: Commit and Push Upstream Commit File
         run: |
-          # The downloaded file will be in configs/configs/upstream_commits.json, so move it
-          if [ -f "configs/upstream_commits.json" ]; then
-            mv configs/upstream_commits.json ./configs/upstream_commits.json
-            rmdir configs
-          fi
-          
+          # The file is already in the correct location (configs/upstream_commits.json).
+          # No move is needed.
           git config --global user.name "GitHub Actions Watcher"
           git config --global user.email "actions@github.com"
           git add configs/upstream_commits.json
+          
+          # Check if the file has actually changed before committing
           if [[ -n $(git status --porcelain) ]]; then
+            echo "Committing updated upstream_commits.json..."
             git commit -m "ci: update upstream commit records"
             git push
+          else
+            echo "No changes to upstream_commits.json to commit."
           fi
