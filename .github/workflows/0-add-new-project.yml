@@ -1,0 +1,160 @@
+# .github/workflows/0-add-new-project.yml
+name: 0. Add New Kernel Project
+on:
+  workflow_dispatch:
+    inputs:
+      project_key:
+        description: '项目唯一标识 (例如 s26_sm8850)'
+        required: true
+      repo:
+        description: '内核仓库路径 (例如 YuzakiKokuban/android_kernel_samsung_sm8850)'
+        required: true
+      defconfig:
+        description: '项目的 Defconfig 文件名'
+        required: true
+      localversion_base:
+        description: '内核版本号基础字符串'
+        required: true
+      lto:
+        description: 'LTO 配置 (thin, full 或留空)'
+        required: false
+        default: ''
+      anykernel_repo:
+        description: 'AnyKernel3 仓库 URL'
+        required: true
+        default: 'https://github.com/YuzakiKokuban/AnyKernel3.git'
+      anykernel_branch:
+        description: '此项目的 AnyKernel3 分支名'
+        required: true
+      zip_name_prefix:
+        description: '刷机包文件名前缀'
+        required: true
+      toolchain_urls:
+        description: '工具链下载地址 (每个 URL 占一行)'
+        required: true
+        type: string
+      toolchain_path_prefix:
+        description: '工具链解压后的 prebuilts 相对路径'
+        required: true
+        default: 'prebuilts'
+      toolchain_path_exports:
+        description: '需要添加到 PATH 的工具链子目录 (每个路径占一行)'
+        required: true
+        type: string
+      version_method:
+        description: '(可选) 版本号设置方式 (file 或留空使用默认的 param)'
+        required: false
+        default: 'param'
+      extra_host_env:
+        description: '(可选) 是否需要额外的 HOST 环境变量'
+        required: false
+        type: boolean
+        default: false
+      disable_security:
+        description: '(可选) 需要禁用的三星安全特性 (每个特性占一行)'
+        required: false
+        type: string
+
+jobs:
+  add-project:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+        with:
+          token: ${{ secrets.ADMIN_TOKEN }} # 使用 ADMIN_TOKEN 来确保有权限推送
+
+      - name: Install yq and jq
+        run: |
+          sudo wget https://github.com/mikefarah/yq/releases/latest/download/yq_linux_amd64 -O /usr/bin/yq
+          sudo chmod +x /usr/bin/yq
+          sudo apt-get install -y jq
+
+      - name: Update Project Files
+        run: |
+          # 将多行字符串输入转换为 JSON 数组
+          TOOLCHAIN_URLS_JSON=$(echo "${{ github.event.inputs.toolchain_urls }}" | jq -R . | jq -s .)
+          TOOLCHAIN_PATH_EXPORTS_JSON=$(echo "${{ github.event.inputs.toolchain_path_exports }}" | jq -R . | jq -s .)
+          
+          # 处理可选的 disable_security
+          DISABLE_SECURITY_INPUT="${{ github.event.inputs.disable_security }}"
+          if [ -n "$DISABLE_SECURITY_INPUT" ]; then
+            DISABLE_SECURITY_JSON=$(echo "$DISABLE_SECURITY_INPUT" | jq -R . | jq -s .)
+          else
+            DISABLE_SECURITY_JSON="[]"
+          fi
+
+          # 构建新的项目 JSON 对象
+          NEW_PROJECT_JSON=$(jq -n \
+            --arg repo "${{ github.event.inputs.repo }}" \
+            --arg defconfig "${{ github.event.inputs.defconfig }}" \
+            --arg localversion_base "${{ github.event.inputs.localversion_base }}" \
+            --arg lto "${{ github.event.inputs.lto }}" \
+            --argjson supported_ksu '["sukisuultra", "mksu", "ksu"]' \
+            --argjson toolchain_urls "$TOOLCHAIN_URLS_JSON" \
+            --arg toolchain_path_prefix "${{ github.event.inputs.toolchain_path_prefix }}" \
+            --argjson toolchain_path_exports "$TOOLCHAIN_PATH_EXPORTS_JSON" \
+            --arg anykernel_repo "${{ github.event.inputs.anykernel_repo }}" \
+            --arg anykernel_branch "${{ github.event.inputs.anykernel_branch }}" \
+            --arg zip_name_prefix "${{ github.event.inputs.zip_name_prefix }}" \
+            --arg version_method "${{ github.event.inputs.version_method }}" \
+            --argjson extra_host_env ${{ github.event.inputs.extra_host_env }} \
+            --argjson disable_security "$DISABLE_SECURITY_JSON" \
+            '{
+              repo: $repo,
+              defconfig: $defconfig,
+              localversion_base: $localversion_base,
+              lto: $lto,
+              supported_ksu: $supported_ksu,
+              toolchain_urls: $toolchain_urls,
+              toolchain_path_prefix: $toolchain_path_prefix,
+              toolchain_path_exports: $toolchain_path_exports,
+              anykernel_repo: $anykernel_repo,
+              anykernel_branch: $anykernel_branch,
+              zip_name_prefix: $zip_name_prefix,
+              version_method: $version_method,
+              extra_host_env: $extra_host_env,
+              disable_security: $disable_security
+            }')
+
+          # 更新 projects.json
+          jq --arg key "${{ github.event.inputs.project_key }}" \
+             --argjson value "$NEW_PROJECT_JSON" \
+             '. + {($key): $value}' \
+             configs/projects.json > tmp.json && mv tmp.json configs/projects.json
+          echo "✅ Updated configs/projects.json"
+
+          # 更新 2-update-kernelsu.yml
+          yq e '.on.workflow_dispatch.inputs.project.options += ["${{ github.event.inputs.project_key }}"]' -i .github/workflows/2-update-kernelsu.yml
+          echo "✅ Updated .github/workflows/2-update-kernelsu.yml"
+
+          # 更新 4-universal-build.yml
+          yq e '.on.workflow_dispatch.inputs.project.options += ["${{ github.event.inputs.project_key }}"]' -i .github/workflows/4-universal-build.yml
+          echo "✅ Updated .github/workflows/4-universal-build.yml"
+
+      - name: Commit and Push Changes
+        run: |
+          git config --global user.name "GitHub Actions"
+          git config --global user.email "actions@github.com"
+          git add configs/projects.json .github/workflows/2-update-kernelsu.yml .github/workflows/4-universal-build.yml
+          if [[ -n $(git status --porcelain) ]]; then
+            git commit -m "feat: Add new project '${{ github.event.inputs.project_key }}' via automated workflow"
+            git push
+            echo "🚀 Changes have been committed and pushed."
+          else
+            echo "No changes to commit."
+          fi
+          
+      - name: Display Next Steps
+        run: |
+          echo "========================================================================"
+          echo "🎉 新项目 '${{ github.event.inputs.project_key }}' 已成功添加到 CI 中心！"
+          echo ""
+          echo "下一步操作:"
+          echo "1. 访问新的内核仓库: https://github.com/${{ github.event.inputs.repo }}"
+          echo "   在 Settings -> Secrets and variables -> Actions 中添加名为 'CI_TOKEN' 的 Secret，"
+          echo "   其值为你的 Personal Access Token。"
+          echo ""
+          echo "2. 返回本仓库 (Kokuban_Kernel_CI_Center) 的 Actions 页面，"
+          echo "   运行 '1. Setup Kernel Repositories' 工作流，为新仓库一键配置好触发器。"
+          echo "========================================================================"
