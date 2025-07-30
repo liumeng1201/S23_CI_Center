@@ -65,7 +65,13 @@ jobs:
           echo "PROJECT_TOOLCHAIN_URLS=$(echo $CONFIG_JSON | jq -c .toolchain_urls)" >> $GITHUB_ENV
           echo "PROJECT_TOOLCHAIN_PATH_PREFIX=$(echo $CONFIG_JSON | jq -r .toolchain_path_prefix)" >> $GITHUB_ENV
           echo "PROJECT_TOOLCHAIN_PATH_EXPORTS=$(echo $CONFIG_JSON | jq -c .toolchain_path_exports)" >> $GITHUB_ENV
-          echo "PROJECT_ANYKERNEL_REPO=$(echo $CONFIG_JSON | jq -r .anykernel_repo)" >> $GITHUB_ENV
+          
+          # 修正：同时导出完整的 URL 和 owner/repo 格式
+          ANYKERNEL_REPO_URL=$(echo $CONFIG_JSON | jq -r .anykernel_repo)
+          echo "PROJECT_ANYKERNEL_REPO=${ANYKERNEL_REPO_URL}" >> $GITHUB_ENV
+          ANYKERNEL_REPO_SLUG=$(echo "$ANYKERNEL_REPO_URL" | sed 's|https://github.com/||' | sed 's|\.git$||')
+          echo "PROJECT_ANYKERNEL_REPO_SLUG=${ANYKERNEL_REPO_SLUG}" >> $GITHUB_ENV
+
           echo "PROJECT_ANYKERNEL_BRANCH=$(echo $CONFIG_JSON | jq -r .anykernel_branch)" >> $GITHUB_ENV
           echo "PROJECT_ZIP_NAME_PREFIX=$(echo $CONFIG_JSON | jq -r .zip_name_prefix)" >> $GITHUB_ENV
           echo "PROJECT_VERSION_METHOD=$(echo $CONFIG_JSON | jq -r '.version_method // "param"')" >> $GITHUB_ENV
@@ -107,10 +113,10 @@ jobs:
           restore-keys: |
             ${{ runner.os }}-ccache-${{ env.PROJECT_KEY }}-
 
-      # 修正：为 AnyKernel3 缓存增加版本控制
       - name: Get AnyKernel3 Remote Commit Hash
         id: get_ak3_hash
         run: |
+          # 使用完整的 URL 来获取远程 hash
           HASH=$(git ls-remote ${{ env.PROJECT_ANYKERNEL_REPO }} ${{ env.PROJECT_ANYKERNEL_BRANCH }} | cut -f1)
           if [ -z "$HASH" ]; then
             echo "Error: Could not get remote commit hash for AnyKernel3."
@@ -132,10 +138,12 @@ jobs:
         if: steps.anykernel-cache.outputs.cache-hit != 'true'
         uses: actions/checkout@v4
         with:
-          repository: ${{ env.PROJECT_ANYKERNEL_REPO }}
+          # 修正：使用 owner/repo 格式
+          repository: ${{ env.PROJECT_ANYKERNEL_REPO_SLUG }}
           ref: ${{ env.PROJECT_ANYKERNEL_BRANCH }}
           path: anykernel_repo
-          depth: 1
+          # 修正：使用 fetch-depth
+          fetch-depth: 1
 
       - name: Setup KernelSU based on branch
         working-directory: ./kernel_source
