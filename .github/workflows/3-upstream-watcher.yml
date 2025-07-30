@@ -1,19 +1,60 @@
 # .github/workflows/3-upstream-watcher.yml
-name: 3. Watch Upstream KernelSU
+name: 3. Watch Upstream KernelSU (Matrix Powered)
 on:
   schedule:
-    - cron: '0 * * * *'
+    - cron: '0 */6 * * *' # 每6小时检查一次
   workflow_dispatch:
+
 jobs:
-  check_and_update:
+  generate-matrix:
     runs-on: ubuntu-latest
-    permissions: { contents: write }
+    outputs:
+      matrix: ${{ steps.set-matrix.outputs.matrix }}
     steps:
-      - { uses: actions/checkout@v4, with: { token: "${{ secrets.ADMIN_TOKEN }}" } }
-      - { run: "sudo apt-get install -y jq" }
-      - name: Check Upstream Repositories
-        id: check
+      - name: Checkout Central Repo
+        uses: actions/checkout@v4
+      - name: Install jq
+        run: sudo apt-get install -y jq
+      - name: Generate Update Matrix
+        id: set-matrix
         run: |
+          JSON_MATRIX=$(jq -c '[
+            . as $all_projects |
+            ["ksu", "mksu", "sukisuultra"] |
+            map({
+              "ksu_type": .,
+              "projects": [
+                $all_projects |
+                keys[] |
+                select($all_projects[.].supported_ksu | index(.) != null) |
+                { "key": ., "repo": $all_projects[.].repo }
+              ]
+            })
+          ]' configs/projects.json)
+          echo "matrix=$JSON_MATRIX" >> $GITHUB_OUTPUT
+
+  check_and_update:
+    needs: generate-matrix
+    if: ${{ needs.generate-matrix.outputs.matrix != '[]' }}
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        include: ${{ fromJson(needs.generate-matrix.outputs.matrix) }}
+      fail-fast: false # 一个项目失败不影响其他项目
+    
+    steps:
+      - name: Checkout Central Repo
+        uses: actions/checkout@v4
+        with:
+          token: "${{ secrets.ADMIN_TOKEN }}"
+
+      - name: Check and Update for ${{ matrix.ksu_type }}
+        env:
+          ADMIN_TOKEN: ${{ secrets.ADMIN_TOKEN }}
+          KSU_TYPE: ${{ matrix.ksu_type }}
+          PROJECTS_TO_UPDATE: ${{ toJson(matrix.projects) }}
+        run: |
+          # --- Configuration ---
           declare -A KSU_UPSTREAMS
           KSU_UPSTREAMS["ksu"]="https://github.com/tiann/KernelSU.git"
           KSU_UPSTREAMS["mksu"]="https://github.com/5ec1cff/KernelSU.git"
@@ -28,46 +69,74 @@ jobs:
           KSU_SETUP_URLS["ksu"]="https://raw.githubusercontent.com/tiann/KernelSU/main/kernel/setup.sh"
           KSU_SETUP_URLS["mksu"]="https://raw.githubusercontent.com/5ec1cff/KernelSU/main/kernel/setup.sh"
           KSU_SETUP_URLS["sukisuultra"]="https://raw.githubusercontent.com/SukiSU-Ultra/SukiSU-Ultra/main/kernel/setup.sh"
+          
+          UPSTREAM_REPO_URL="${KSU_UPSTREAMS[$KSU_TYPE]}"
+          UPSTREAM_BRANCH="${KSU_BRANCHES[$KSU_TYPE]}"
+          SETUP_URL="${KSU_SETUP_URLS[$KSU_TYPE]}"
 
-          ANY_UPDATES="false"
-          for ksu_type in "${!KSU_UPSTREAMS[@]}"; do
-            UPSTREAM_REPO_URL="${KSU_UPSTREAMS[$ksu_type]}"
-            UPSTREAM_BRANCH="${KSU_BRANCHES[$ksu_type]}"
-            SETUP_URL="${KSU_SETUP_URLS[$ksu_type]}"
+          echo "--- Checking Upstream: $KSU_TYPE (Branch: $UPSTREAM_BRANCH) ---"
+          LATEST_COMMIT=$(git ls-remote "$UPSTREAM_REPO_URL" "$UPSTREAM_BRANCH" | cut -f1)
+          LAST_KNOWN_COMMIT=$(jq -r --arg KTYPE "$KSU_TYPE" '.[$KTYPE]' ${{ github.workspace }}/configs/upstream_commits.json)
+
+          if [ "$LATEST_COMMIT" == "$LAST_KNOWN_COMMIT" ]; then
+            echo "No new updates for $KSU_TYPE. Skipping."
+            exit 0
+          fi
+
+          echo "New version found for $KSU_TYPE! Starting update process..."
+          LATEST_COMMIT_SHORT=${LATEST_COMMIT:0:7}
+          
+          # Use jq to loop through projects for this ksu_type
+          echo "$PROJECTS_TO_UPDATE" | jq -c '.[]' | while read -r project; do
+            PROJECT_KEY=$(echo "$project" | jq -r '.key')
+            PROJECT_REPO=$(echo "$project" | jq -r '.repo')
+
+            echo "--> Processing update for project: $PROJECT_KEY"
             
-            echo "--- 正在检查: $ksu_type (分支: $UPSTREAM_BRANCH) ---"
-            LATEST_COMMIT=$(git ls-remote "$UPSTREAM_REPO_URL" "$UPSTREAM_BRANCH" | cut -f1)
-            LAST_KNOWN_COMMIT=$(jq -r --arg KTYPE "$ksu_type" '.[$KTYPE]' ${{ github.workspace }}/configs/upstream_commits.json)
-            if [ "$LATEST_COMMIT" != "$LAST_KNOWN_COMMIT" ]; then
-              echo "发现新版本！开始更新..."
-              ANY_UPDATES="true"
-              LATEST_COMMIT_SHORT=${LATEST_COMMIT:0:7}
-              for project_key in $(jq -r 'keys[]' ${{ github.workspace }}/configs/projects.json); do
-                supports_ksu=$(jq -r --arg PKEY "$project_key" --arg KTYPE "$ksu_type" '.[$PKEY].supported_ksu | index($KTYPE)' ${{ github.workspace }}/configs/projects.json)
-                if [ "$supports_ksu" != "null" ]; then
-                  PROJECT_REPO=$(jq -r --arg PKEY "$project_key" '.[$PKEY].repo' ${{ github.workspace }}/configs/projects.json)
-                  echo "正在为项目 '$project_key' 更新..."
-                  git clone --depth=1 --branch "$ksu_type" "https://x-access-token:${{ secrets.ADMIN_TOKEN }}@github.com/$PROJECT_REPO.git" "temp_kernel"
-                  cd temp_kernel
-                  echo "正在写入版本文件: $LATEST_COMMIT_SHORT"
-                  echo "$LATEST_COMMIT_SHORT" > KERNELSU_VERSION.txt
-                  echo "同步 .gitignore 文件..."
-                  cp ${{ github.workspace }}/configs/universal.gitignore ./.gitignore
-                  echo "从 $SETUP_URL 运行 setup.sh..."
-                  if [[ "$ksu_type" == "sukisuultra" ]]; then curl -LSs "$SETUP_URL" | bash -s susfs-main; else curl -LSs "$SETUP_URL" | bash -; fi
-                  git config --global user.name "GitHub Actions Watcher" && git config --global user.email "actions@github.com"
-                  if [[ -n $(git status --porcelain) ]]; then git add .; git commit -m "ci: 自动更新 $ksu_type 至 $LATEST_COMMIT_SHORT"; git push; fi
-                  cd .. && rm -rf temp_kernel
-                fi
-              done
-              jq --arg KTYPE "$ksu_type" --arg LCOMMIT "$LATEST_COMMIT" '.[$KTYPE] = $LCOMMIT' ${{ github.workspace }}/configs/upstream_commits.json > tmp.json && mv tmp.json ${{ github.workspace }}/configs/upstream_commits.json
+            git clone --depth=1 --branch "$KSU_TYPE" "https://x-access-token:$ADMIN_TOKEN@github.com/$PROJECT_REPO.git" "temp_kernel"
+            cd temp_kernel
+
+            echo "Writing version file: $LATEST_COMMIT_SHORT"
+            echo "$LATEST_COMMIT_SHORT" > KERNELSU_VERSION.txt
+
+            echo "Syncing .gitignore file..."
+            cp ${{ github.workspace }}/configs/universal.gitignore ./.gitignore
+
+            echo "Running setup.sh from $SETUP_URL..."
+            if [[ "$KSU_TYPE" == "sukisuultra" ]]; then
+              curl -LSs "$SETUP_URL" | bash -s susfs-main
+            else
+              curl -LSs "$SETUP_URL" | bash -
             fi
+            
+            git config --global user.name "GitHub Actions Watcher"
+            git config --global user.email "actions@github.com"
+
+            if [[ -n $(git status --porcelain) ]]; then
+              git add .
+              git commit -m "ci: auto-update $KSU_TYPE to $LATEST_COMMIT_SHORT"
+              git push
+            else
+              echo "No file changes for $PROJECT_KEY, skipping push."
+            fi
+
+            cd .. && rm -rf temp_kernel
           done
-          echo "any_updates=$ANY_UPDATES" >> $GITHUB_OUTPUT
+          
+          # Update the central commit tracker file
+          jq --arg KTYPE "$KSU_TYPE" --arg LCOMMIT "$LATEST_COMMIT" '.[$KTYPE] = $LCOMMIT' ${{ github.workspace }}/configs/upstream_commits.json > tmp.json && mv tmp.json ${{ github.workspace }}/configs/upstream_commits.json
+          
+          # Set flag to commit the tracker file
+          echo "SHOULD_COMMIT=true" >> $GITHUB_ENV
+
       - name: Commit and Push Upstream Commit File
-        if: steps.check.outputs.any_updates == 'true'
+        if: env.SHOULD_COMMIT == 'true'
         run: |
-          git config --global user.name "GitHub Actions Watcher" && git config --global user.email "actions@github.com"
+          git config --global user.name "GitHub Actions Watcher"
+          git config --global user.email "actions@github.com"
           git add configs/upstream_commits.json
-          git commit -m "ci: 更新上游 KernelSU commit 记录"
-          git push
+          # Check if there are changes to commit to avoid empty commits
+          if [[ -n $(git status --porcelain) ]]; then
+            git commit -m "ci: update upstream commit record for ${{ matrix.ksu_type }}"
+            git push
+          fi
