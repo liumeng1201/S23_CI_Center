@@ -5,7 +5,7 @@ on:
       commit_message:
         description: '请输入本次同步操作的 Commit 信息'
         required: true
-        default: 'ci: Sync central build trigger workflow'
+        default: 'ci: Sync central CI files'
 jobs:
   setup:
     runs-on: ubuntu-latest
@@ -34,13 +34,20 @@ jobs:
                 echo "Configuring branch: $branch"
                 git checkout "$branch"
 
+                # 清理旧文件
                 rm -rf .github/workflows build*.sh update-kernelsu.yml
 
+                # 创建新的 CI 触发器
                 mkdir -p .github/workflows
                 cp ${{ github.workspace }}/templates/trigger-central-build.yml.tpl .github/workflows/trigger-central-build.yml
                 sed -i "s|__PROJECT_KEY__|${project_key}|g" .github/workflows/trigger-central-build.yml
                 sed -i "s|__REPO_OWNER__|${{ github.repository_owner }}|g" .github/workflows/trigger-central-build.yml
 
+                # 新增：同步 .gitignore 文件
+                echo "Syncing .gitignore..."
+                cp ${{ github.workspace }}/configs/universal.gitignore ./.gitignore
+
+                # 提交所有变动
                 if [[ -n $(git status --porcelain) ]]; then
                   git add .
                   git commit -m "$COMMIT_MESSAGE (branch: $branch)"
