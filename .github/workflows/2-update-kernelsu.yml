@@ -16,17 +16,16 @@ on:
 jobs:
   update:
     runs-on: ubuntu-latest
-    permissions: { contents: write }
     steps:
-      - { uses: actions/checkout@v4 }
-      - { run: "sudo apt-get install -y jq" }
-      - name: Update Kernel Source
-        env: { ADMIN_TOKEN: "${{ secrets.ADMIN_TOKEN }}" }
+      - name: Checkout Central Repo
+        uses: actions/checkout@v4
+
+      - name: Get Upstream Commit and Project Info
+        id: get_info
+        env:
+          PROJECT_KEY: ${{ github.event.inputs.project }}
+          KSU_TYPE: ${{ github.event.inputs.branch }}
         run: |
-          PROJECT_KEY="${{ github.event.inputs.project }}"
-          KSU_TYPE="${{ github.event.inputs.branch }}"
-          PROJECT_REPO=$(jq -r --arg PKEY "$PROJECT_KEY" '.[$PKEY].repo' ${{ github.workspace }}/configs/projects.json)
-          
           declare -A KSU_REPOS
           KSU_REPOS["ksu"]="https://github.com/tiann/KernelSU.git"
           KSU_REPOS["mksu"]="https://github.com/5ec1cff/KernelSU.git"
@@ -37,36 +36,24 @@ jobs:
           KSU_BRANCHES["mksu"]="main"
           KSU_BRANCHES["sukisuultra"]="susfs-main"
 
-          declare -A KSU_SETUP_URLS
-          KSU_SETUP_URLS["ksu"]="https://raw.githubusercontent.com/tiann/KernelSU/main/kernel/setup.sh"
-          KSU_SETUP_URLS["mksu"]="https://raw.githubusercontent.com/5ec1cff/KernelSU/main/kernel/setup.sh"
-          KSU_SETUP_URLS["sukisuultra"]="https://raw.githubusercontent.com/SukiSU-Ultra/SukiSU-Ultra/main/kernel/setup.sh"
-
           UPSTREAM_REPO_URL="${KSU_REPOS[$KSU_TYPE]}"
           UPSTREAM_BRANCH="${KSU_BRANCHES[$KSU_TYPE]}"
-          SETUP_URL="${KSU_SETUP_URLS[$KSU_TYPE]}"
 
-          echo "正在为项目 '$PROJECT_KEY' 的 '$KSU_TYPE' 分支更新..."
-          git clone --depth=1 --branch "$KSU_TYPE" "https://x-access-token:$ADMIN_TOKEN@github.com/$PROJECT_REPO.git" "temp_kernel"
-          cd temp_kernel
-          
-          echo "正在获取上游 Commit ID..."
+          echo "Getting latest commit from $UPSTREAM_REPO_URL..."
           LATEST_COMMIT_SHORT=$(git ls-remote "$UPSTREAM_REPO_URL" "$UPSTREAM_BRANCH" | cut -f1 | cut -c1-7)
-          echo "$LATEST_COMMIT_SHORT" > KERNELSU_VERSION.txt
-          echo "已将 Commit ID ($LATEST_COMMIT_SHORT) 写入 KERNELSU_VERSION.txt"
+          echo "latest_commit_short=$LATEST_COMMIT_SHORT" >> $GITHUB_OUTPUT
 
-          echo "同步 .gitignore 文件..."
-          cp ${{ github.workspace }}/configs/universal.gitignore ./.gitignore
+          echo "Generating project JSON..."
+          PROJECT_REPO=$(jq -r --arg PKEY "$PROJECT_KEY" '.[$PKEY].repo' ${{ github.workspace }}/configs/projects.json)
+          JSON_STRING=$(jq -n --arg key "$PROJECT_KEY" --arg repo "$PROJECT_REPO" '[{key: $key, repo: $repo}]')
+          echo "projects_json=$JSON_STRING" >> $GITHUB_OUTPUT
 
-          echo "从 $SETUP_URL 运行 setup.sh..."
-          if [[ "$KSU_TYPE" == "sukisuultra" ]]; then curl -LSs "$SETUP_URL" | bash -s susfs-main; else curl -LSs "$SETUP_URL" | bash -; fi
-          
-          git config --global user.name "GitHub Actions" && git config --global user.email "actions@github.com"
-          if [[ -n $(git status --porcelain) ]]; then
-            git add .
-            git commit -m "ci: 手动更新 $KSU_TYPE 至 $LATEST_COMMIT_SHORT"
-            git push
-            echo "更新成功并已推送。"
-          else
-            echo "无文件变动，无需推送。"
-          fi
+      - name: Call Reusable Update Workflow
+        uses: ./.github/workflows/reusable-update-kernel-source.yml
+        with:
+          projects_json: ${{ steps.get_info.outputs.projects_json }}
+          ksu_type: ${{ github.event.inputs.branch }}
+          latest_commit_short: ${{ steps.get_info.outputs.latest_commit_short }}
+          commit_message: "ci: manual update ${{ github.event.inputs.branch }} to ${{ steps.get_info.outputs.latest_commit_short }}"
+        secrets:
+          ADMIN_TOKEN: ${{ secrets.ADMIN_TOKEN }}
