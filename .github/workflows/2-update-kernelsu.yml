@@ -14,12 +14,16 @@ on:
         type: choice
         options: [sukisuultra, mksu, ksu]
 jobs:
-  update:
+  prepare:
     runs-on: ubuntu-latest
+    outputs:
+      projects_json: ${{ steps.get_info.outputs.projects_json }}
+      latest_commit_short: ${{ steps.get_info.outputs.latest_commit_short }}
     steps:
       - name: Checkout Central Repo
         uses: actions/checkout@v4
-
+      - name: Install jq
+        run: sudo apt-get install -y jq
       - name: Get Upstream Commit and Project Info
         id: get_info
         env:
@@ -48,12 +52,13 @@ jobs:
           JSON_STRING=$(jq -n --arg key "$PROJECT_KEY" --arg repo "$PROJECT_REPO" '[{key: $key, repo: $repo}]')
           echo "projects_json=$JSON_STRING" >> $GITHUB_OUTPUT
 
-      - name: Call Reusable Update Workflow
-        uses: ./.github/workflows/reusable-update-kernel-source.yml
-        with:
-          projects_json: ${{ steps.get_info.outputs.projects_json }}
-          ksu_type: ${{ github.event.inputs.branch }}
-          latest_commit_short: ${{ steps.get_info.outputs.latest_commit_short }}
-          commit_message: "ci: manual update ${{ github.event.inputs.branch }} to ${{ steps.get_info.outputs.latest_commit_short }}"
-        secrets:
-          ADMIN_TOKEN: ${{ secrets.ADMIN_TOKEN }}
+  call-reusable-workflow:
+    needs: prepare
+    uses: ./.github/workflows/reusable-update-kernel-source.yml
+    with:
+      projects_json: ${{ needs.prepare.outputs.projects_json }}
+      ksu_type: ${{ github.event.inputs.branch }}
+      latest_commit_short: ${{ needs.prepare.outputs.latest_commit_short }}
+      commit_message: "ci: manual update ${{ github.event.inputs.branch }} to ${{ needs.prepare.outputs.latest_commit_short }}"
+    secrets:
+      ADMIN_TOKEN: ${{ secrets.ADMIN_TOKEN }}

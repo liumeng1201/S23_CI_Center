@@ -2,106 +2,108 @@
 name: 3. Watch Upstream KernelSU (Matrix Powered)
 on:
   schedule:
-    - cron: '0 */6 * * *' # 每6小时检查一次
+    - cron: '0 */6 * * *'
   workflow_dispatch:
 
 jobs:
-  generate-matrix:
+  discover-updates:
     runs-on: ubuntu-latest
     outputs:
-      matrix: ${{ steps.set-matrix.outputs.matrix }}
+      update_matrix: ${{ steps.discover.outputs.matrix }}
     steps:
       - name: Checkout Central Repo
         uses: actions/checkout@v4
       - name: Install jq
         run: sudo apt-get install -y jq
-      - name: Generate Update Matrix
-        id: set-matrix
+      - name: Discover what needs to be updated
+        id: discover
         run: |
-          JSON_MATRIX=$(jq -c '[
-            . as $all_projects |
-            ["ksu", "mksu", "sukisuultra"] |
-            map({
-              "ksu_type": .,
-              "projects": [
-                $all_projects |
-                keys[] |
-                select(
-                  $all_projects[.].supported_ksu and
-                  ($all_projects[.].supported_ksu | index(.) != null)
-                ) |
-                { "key": ., "repo": $all_projects[.].repo }
-              ]
-            }) | .[] | select(.projects | length > 0)
-          ]' configs/projects.json)
-          echo "matrix=$JSON_MATRIX" >> $GITHUB_OUTPUT
+          UPDATE_MATRIX='[]'
+          
+          declare -A KSU_UPSTREAMS
+          KSU_UPSTREAMS=( ["ksu"]="https://github.com/tiann/KernelSU.git" ["mksu"]="https://github.com/5ec1cff/KernelSU.git" ["sukisuultra"]="https://github.com/SukiSU-Ultra/SukiSU-Ultra.git" )
+          declare -A KSU_BRANCHES
+          KSU_BRANCHES=( ["ksu"]="main" ["mksu"]="main" ["sukisuultra"]="susfs-main" )
 
-  check_and_update:
-    needs: generate-matrix
-    if: ${{ needs.generate-matrix.outputs.matrix != '[]' }}
-    runs-on: ubuntu-latest
+          for ksu_type in "${!KSU_UPSTREAMS[@]}"; do
+            echo "--- Checking: $ksu_type ---"
+            UPSTREAM_REPO_URL="${KSU_UPSTREAMS[$ksu_type]}"
+            UPSTREAM_BRANCH="${KSU_BRANCHES[$ksu_type]}"
+            
+            LATEST_COMMIT=$(git ls-remote "$UPSTREAM_REPO_URL" "$UPSTREAM_BRANCH" | cut -f1)
+            LAST_KNOWN_COMMIT=$(jq -r --arg KTYPE "$ksu_type" '.[$KTYPE]' configs/upstream_commits.json)
+
+            if [ "$LATEST_COMMIT" != "$LAST_KNOWN_COMMIT" ]; then
+              echo "New version found for $ksu_type: ${LATEST_COMMIT:0:7}"
+              
+              PROJECTS_JSON=$(jq -c --arg KTYPE "$ksu_type" '[. as $all | keys[] | select($all[.].supported_ksu and ($all[.].supported_ksu | index($KTYPE) != null)) | {key: ., repo: $all[.].repo}]' configs/projects.json)
+              
+              if [ "$PROJECTS_JSON" != "[]" ]; then
+                LATEST_COMMIT_SHORT=${LATEST_COMMIT:0:7}
+                COMMIT_MESSAGE="ci: auto-update $ksu_type to $LATEST_COMMIT_SHORT"
+                
+                UPDATE_OBJECT=$(jq -n --arg kt "$ksu_type" --argjson pj "$PROJECTS_JSON" --arg lcs "$LATEST_COMMIT_SHORT" --arg cm "$COMMIT_MESSAGE" \
+                  '{ksu_type: $kt, projects_json: $pj, latest_commit_short: $lcs, commit_message: $cm}')
+                
+                UPDATE_MATRIX=$(echo "$UPDATE_MATRIX" | jq --argjson obj "$UPDATE_OBJECT" '. + [$obj]')
+                
+                # Update the tracker file in the workspace for later commit
+                jq --arg KTYPE "$ksu_type" --arg LCOMMIT "$LATEST_COMMIT" '.[$KTYPE] = $LCOMMIT' configs/upstream_commits.json > tmp.json && mv tmp.json configs/upstream_commits.json
+              fi
+            fi
+          done
+          
+          echo "matrix=$(echo $UPDATE_MATRIX | jq -c .)" >> $GITHUB_OUTPUT
+          
+      - name: Upload updated tracker file
+        uses: actions/upload-artifact@v4
+        if: steps.discover.outputs.matrix != '[]'
+        with:
+          name: upstream-commits
+          path: configs/upstream_commits.json
+
+  update-projects:
+    needs: discover-updates
+    if: needs.discover-updates.outputs.update_matrix != '[]'
     strategy:
       fail-fast: false
       matrix:
-        config: ${{ fromJson(needs.generate-matrix.outputs.matrix) }}
-    
+        config: ${{ fromJson(needs.discover-updates.outputs.update_matrix) }}
+    uses: ./.github/workflows/reusable-update-kernel-source.yml
+    with:
+      projects_json: ${{ toJson(matrix.config.projects_json) }}
+      ksu_type: ${{ matrix.config.ksu_type }}
+      latest_commit_short: ${{ matrix.config.latest_commit_short }}
+      commit_message: ${{ matrix.config.commit_message }}
+    secrets:
+      ADMIN_TOKEN: ${{ secrets.ADMIN_TOKEN }}
+
+  commit-tracker-file:
+    needs: [discover-updates, update-projects]
+    if: success() && needs.discover-updates.outputs.update_matrix != '[]'
+    runs-on: ubuntu-latest
     steps:
       - name: Checkout Central Repo
         uses: actions/checkout@v4
         with:
-          token: "${{ secrets.ADMIN_TOKEN }}"
-
-      - name: Check for new version
-        id: check_version
-        env:
-          KSU_TYPE: ${{ matrix.config.ksu_type }}
-        run: |
-          declare -A KSU_UPSTREAMS
-          KSU_UPSTREAMS["ksu"]="https://github.com/tiann/KernelSU.git"
-          KSU_UPSTREAMS["mksu"]="https://github.com/5ec1cff/KernelSU.git"
-          KSU_UPSTREAMS["sukisuultra"]="https://github.com/SukiSU-Ultra/SukiSU-Ultra.git"
-          
-          declare -A KSU_BRANCHES
-          KSU_BRANCHES["ksu"]="main"
-          KSU_BRANCHES["mksu"]="main"
-          KSU_BRANCHES["sukisuultra"]="susfs-main"
-          
-          UPSTREAM_REPO_URL="${KSU_UPSTREAMS[$KSU_TYPE]}"
-          UPSTREAM_BRANCH="${KSU_BRANCHES[$KSU_TYPE]}"
-
-          echo "Checking upstream for $KSU_TYPE..."
-          LATEST_COMMIT=$(git ls-remote "$UPSTREAM_REPO_URL" "$UPSTREAM_BRANCH" | cut -f1)
-          LAST_KNOWN_COMMIT=$(jq -r --arg KTYPE "$KSU_TYPE" '.[$KTYPE]' ${{ github.workspace }}/configs/upstream_commits.json)
-
-          if [ "$LATEST_COMMIT" != "$LAST_KNOWN_COMMIT" ]; then
-            echo "New version found!"
-            echo "should_update=true" >> $GITHUB_OUTPUT
-            echo "latest_commit=$LATEST_COMMIT" >> $GITHUB_OUTPUT
-            echo "latest_commit_short=${LATEST_COMMIT:0:7}" >> $GITHUB_OUTPUT
-          else
-            echo "No new updates."
-            echo "should_update=false" >> $GITHUB_OUTPUT
-          fi
-
-      - name: Call Reusable Workflow to Update All Projects
-        if: steps.check_version.outputs.should_update == 'true'
-        uses: ./.github/workflows/reusable-update-kernel-source.yml
+          token: ${{ secrets.ADMIN_TOKEN }}
+      - name: Download updated tracker file
+        uses: actions/download-artifact@v4
         with:
-          projects_json: ${{ toJson(matrix.config.projects) }}
-          ksu_type: ${{ matrix.config.ksu_type }}
-          latest_commit_short: ${{ steps.check_version.outputs.latest_commit_short }}
-          commit_message: "ci: auto-update ${{ matrix.config.ksu_type }} to ${{ steps.check_version.outputs.latest_commit_short }}"
-        secrets:
-          ADMIN_TOKEN: ${{ secrets.ADMIN_TOKEN }}
-
+          name: upstream-commits
+          path: configs
       - name: Commit and Push Upstream Commit File
-        if: steps.check_version.outputs.should_update == 'true'
         run: |
-          jq --arg KTYPE "${{ matrix.config.ksu_type }}" --arg LCOMMIT "${{ steps.check_version.outputs.latest_commit }}" '.[$KTYPE] = $LCOMMIT' ${{ github.workspace }}/configs/upstream_commits.json > tmp.json && mv tmp.json ${{ github.workspace }}/configs/upstream_commits.json
+          # The downloaded file will be in configs/configs/upstream_commits.json, so move it
+          if [ -f "configs/upstream_commits.json" ]; then
+            mv configs/upstream_commits.json ./configs/upstream_commits.json
+            rmdir configs
+          fi
+          
           git config --global user.name "GitHub Actions Watcher"
           git config --global user.email "actions@github.com"
           git add configs/upstream_commits.json
           if [[ -n $(git status --porcelain) ]]; then
-            git commit -m "ci: update upstream commit record for ${{ matrix.config.ksu_type }}"
+            git commit -m "ci: update upstream commit records"
             git push
           fi
