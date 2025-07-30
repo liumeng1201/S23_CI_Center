@@ -26,10 +26,13 @@ jobs:
               "projects": [
                 $all_projects |
                 keys[] |
-                select($all_projects[.].supported_ksu | index(.) != null) |
+                select(
+                  $all_projects[.].supported_ksu and
+                  ($all_projects[.].supported_ksu | index(.) != null)
+                ) |
                 { "key": ., "repo": $all_projects[.].repo }
               ]
-            })
+            }) | .[] | select(.projects | length > 0)
           ]' configs/projects.json)
           echo "matrix=$JSON_MATRIX" >> $GITHUB_OUTPUT
 
@@ -38,9 +41,9 @@ jobs:
     if: ${{ needs.generate-matrix.outputs.matrix != '[]' }}
     runs-on: ubuntu-latest
     strategy:
-      matrix:
-        include: ${{ fromJson(needs.generate-matrix.outputs.matrix) }}
       fail-fast: false # 一个项目失败不影响其他项目
+      matrix:
+        config: ${{ fromJson(needs.generate-matrix.outputs.matrix) }}
     
     steps:
       - name: Checkout Central Repo
@@ -48,11 +51,11 @@ jobs:
         with:
           token: "${{ secrets.ADMIN_TOKEN }}"
 
-      - name: Check and Update for ${{ matrix.ksu_type }}
+      - name: Check and Update for ${{ matrix.config.ksu_type }}
         env:
           ADMIN_TOKEN: ${{ secrets.ADMIN_TOKEN }}
-          KSU_TYPE: ${{ matrix.ksu_type }}
-          PROJECTS_TO_UPDATE: ${{ toJson(matrix.projects) }}
+          KSU_TYPE: ${{ matrix.config.ksu_type }}
+          PROJECTS_TO_UPDATE: ${{ toJson(matrix.config.projects) }}
         run: |
           # --- Configuration ---
           declare -A KSU_UPSTREAMS
@@ -137,6 +140,6 @@ jobs:
           git add configs/upstream_commits.json
           # Check if there are changes to commit to avoid empty commits
           if [[ -n $(git status --porcelain) ]]; then
-            git commit -m "ci: update upstream commit record for ${{ matrix.ksu_type }}"
+            git commit -m "ci: update upstream commit record for ${{ matrix.config.ksu_type }}"
             git push
           fi
