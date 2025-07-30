@@ -23,7 +23,7 @@ jobs:
           declare -A KSU_UPSTREAMS
           KSU_UPSTREAMS=( ["ksu"]="https://github.com/tiann/KernelSU.git" ["mksu"]="https://github.com/5ec1cff/KernelSU.git" ["sukisuultra"]="https://github.com/SukiSU-Ultra/SukiSU-Ultra.git" )
           declare -A KSU_BRANCHES
-          KSU_BRANCHES=( ["ksu"]="main" ["mksu"]="main" ["sukisuultra"]="susfs-main" )
+          KSU_BRANCHES=( ["ksu"]="main" ["mksu"]="main" ["sukisuultra"]="main" )
 
           for ksu_type in "${!KSU_UPSTREAMS[@]}"; do
             echo "--- Checking: $ksu_type ---"
