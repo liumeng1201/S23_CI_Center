@@ -53,7 +53,11 @@ jobs:
             fi
           done
           
-          echo "matrix=$(echo $UPDATE_MATRIX | jq -c .)" >> $GITHUB_OUTPUT
+          # 修正：使用更健壮的多行输出语法
+          FINAL_MATRIX=$(echo "$UPDATE_MATRIX" | jq -c .)
+          echo "matrix<<EOF" >> $GITHUB_OUTPUT
+          echo "$FINAL_MATRIX" >> $GITHUB_OUTPUT
+          echo "EOF" >> $GITHUB_OUTPUT
           
       - name: Upload updated tracker file
         uses: actions/upload-artifact@v4

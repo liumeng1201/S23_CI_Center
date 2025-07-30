@@ -49,8 +49,11 @@ jobs:
 
           echo "Generating project JSON..."
           PROJECT_REPO=$(jq -r --arg PKEY "$PROJECT_KEY" '.[$PKEY].repo' ${{ github.workspace }}/configs/projects.json)
-          JSON_STRING=$(jq -n --arg key "$PROJECT_KEY" --arg repo "$PROJECT_REPO" '[{key: $key, repo: $repo}]')
-          echo "projects_json=$JSON_STRING" >> $GITHUB_OUTPUT
+          # 修正：使用更健壮的多行输出语法
+          JSON_STRING=$(jq -cn --arg key "$PROJECT_KEY" --arg repo "$PROJECT_REPO" '[{key: $key, repo: $repo}]')
+          echo "projects_json<<EOF" >> $GITHUB_OUTPUT
+          echo "$JSON_STRING" >> $GITHUB_OUTPUT
+          echo "EOF" >> $GITHUB_OUTPUT
 
   call-reusable-workflow:
     needs: prepare
