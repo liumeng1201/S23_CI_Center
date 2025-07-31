@@ -17,6 +17,7 @@ jobs:
           ADMIN_TOKEN: ${{ secrets.ADMIN_TOKEN }}
           WEBHOOK_SECRET: ${{ secrets.PUSH_SERVER_WEBHOOK_SECRET }}
           COMMIT_MESSAGE: ${{ github.event.inputs.commit_message }}
+          GH_TOKEN: ${{ secrets.ADMIN_TOKEN }}
         run: |
           git config --global user.name "GitHub Actions Setup"
           git config --global user.email "actions@github.com"
