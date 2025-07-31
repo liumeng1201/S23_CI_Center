@@ -34,8 +34,8 @@ jobs:
                 echo "Configuring branch: $branch"
                 git checkout "$branch"
 
-                # 清理旧文件
-                rm -rf .github/workflows build*.sh update-kernelsu.yml
+                # 清理旧文件，已加入 update.sh
+                rm -rf .github/workflows build*.sh update-kernelsu.yml update.sh
 
                 # 创建新的 CI 触发器
                 mkdir -p .github/workflows
@@ -43,7 +43,7 @@ jobs:
                 sed -i "s|__PROJECT_KEY__|${project_key}|g" .github/workflows/trigger-central-build.yml
                 sed -i "s|__REPO_OWNER__|${{ github.repository_owner }}|g" .github/workflows/trigger-central-build.yml
 
-                # 新增：同步 .gitignore 文件
+                # 同步 .gitignore 文件
                 echo "Syncing .gitignore..."
                 cp ${{ github.workspace }}/configs/universal.gitignore ./.gitignore
 
