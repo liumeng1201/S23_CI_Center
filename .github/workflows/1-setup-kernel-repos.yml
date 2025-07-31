@@ -64,12 +64,14 @@ jobs:
               EXISTING_HOOK_ID=$(gh api "repos/$PROJECT_REPO/hooks" --jq ".[] | select(.config.url == \"$WEBHOOK_URL\") | .id")
 
               if [ -n "$EXISTING_HOOK_ID" ]; then
-                echo "Webhook already exists. Updating it with the secret..."
+                echo "Webhook already exists. Updating it with the complete config object..."
                 gh api --method PATCH "repos/$PROJECT_REPO/hooks/$EXISTING_HOOK_ID" \
                   -f 'events[]'='release' \
+                  -f "config[url]=$WEBHOOK_URL" \
+                  -f "config[content_type]=json" \
                   -f "config[secret]=$WEBHOOK_SECRET" > /dev/null
               else
-                echo "Webhook does not exist. Creating a new one with the secret..."
+                echo "Webhook does not exist. Creating a new one..."
                 gh api --method POST "repos/$PROJECT_REPO/hooks" \
                   -f name='web' -F active=true \
                   -f 'events[]'='release' \
