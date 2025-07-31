@@ -7,7 +7,7 @@ on:
         description: '选择要更新的内核项目'
         required: true
         type: choice
-        options: [s23_sm8550, s24_sm8650, s25_sm8750, tabs10_mt6989]
+        options: [s23_sm8550, s24_sm8650, s25_sm8750, tabs10_mt6989, tabs9_sm8550]
       branch:
         description: '选择要更新的分支 (KernelSU 类型)'
         required: true
@@ -34,7 +34,7 @@ jobs:
           KSU_REPOS["ksu"]="https://github.com/tiann/KernelSU.git"
           KSU_REPOS["mksu"]="https://github.com/5ec1cff/KernelSU.git"
           KSU_REPOS["sukisuultra"]="https://github.com/SukiSU-Ultra/SukiSU-Ultra.git"
-          
+
           declare -A KSU_BRANCHES
           KSU_BRANCHES["ksu"]="main"
           KSU_BRANCHES["mksu"]="main"
@@ -54,7 +54,6 @@ jobs:
           echo "projects_json<<EOF" >> $GITHUB_OUTPUT
           echo "$JSON_STRING" >> $GITHUB_OUTPUT
           echo "EOF" >> $GITHUB_OUTPUT
-
   call-reusable-workflow:
     needs: prepare
     uses: ./.github/workflows/reusable-update-kernel-source.yml
