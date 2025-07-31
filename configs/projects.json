@@ -25,7 +25,7 @@
     "zip_name_prefix": "S23_kernel",
     "push_server": {
       "enabled": true,
-      "webhook_url": "http://nas.kokuban.su:8080/webhook"
+      "webhook_url": "http://74.176.37.71:8080/webhook"
     }
   },
   "s24_sm8650": {
@@ -55,7 +55,7 @@
     "zip_name_prefix": "S24_kernel",
     "push_server": {
       "enabled": true,
-      "webhook_url": "http://nas.kokuban.su:8080/webhook"
+      "webhook_url": "http://74.176.37.71:8080/webhook"
     }
   },
   "s25_sm8750": {
@@ -99,7 +99,7 @@
     "zip_name_prefix": "S25_kernel",
     "push_server": {
       "enabled": true,
-      "webhook_url": "http://nas.kokuban.su:8080/webhook"
+      "webhook_url": "http://74.176.37.71:8080/webhook"
     }
   },
   "tabs10_mt6989": {
@@ -139,7 +139,7 @@
     "zip_name_prefix": "TabS10_kernel",
     "push_server": {
       "enabled": true,
-      "webhook_url": "http://nas.kokuban.su:8080/webhook"
+      "webhook_url": "http://74.176.37.71:8080/webhook"
     }
   },
   "tabs9_sm8550": {
@@ -171,7 +171,7 @@
     "disable_security": [],
     "push_server": {
       "enabled": true,
-      "webhook_url": "http://nas.kokuban.su:8080/webhook"
+      "webhook_url": "http://74.176.37.71:8080/webhook"
     }
   }
 }

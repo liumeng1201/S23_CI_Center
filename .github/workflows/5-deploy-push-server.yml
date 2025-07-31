@@ -88,14 +88,17 @@ jobs:
             echo "正在安装/更新依赖..."
             pip install -r push_server/requirements.txt
             
-            echo "正在创建 .env 文件..."
-            (
-              echo "TELEGRAM_BOT_TOKEN=${TELEGRAM_BOT_TOKEN}"
-              echo "WEBHOOK_SECRET=${PUSH_SERVER_WEBHOOK_SECRET}"
-            ) > push_server/.env
-            chmod 600 push_server/.env
-
-            echo "正在重启应用服务..."
+            echo "正在创建 systemd 覆盖配置文件..."
+            # 使用 Heredoc 将多行配置写入文件
+            sudo mkdir -p /etc/systemd/system/webhook.service.d
+            sudo bash -c "cat > /etc/systemd/system/webhook.service.d/override.conf" << EOF
+            [Service]
+            Environment="TELEGRAM_BOT_TOKEN=${TELEGRAM_BOT_TOKEN}"
+            Environment="WEBHOOK_SECRET=${PUSH_SERVER_WEBHOOK_SECRET}"
+            EOF
+            
+            echo "正在重载 systemd 并重启服务..."
+            sudo systemctl daemon-reload
             sudo systemctl restart webhook
             
             echo "🎉 部署成功！机器人已是最新版本！"
