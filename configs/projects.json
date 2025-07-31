@@ -127,7 +127,7 @@
     "zip_name_prefix": "TabS10_kernel"
   },
   "tabs9_sm8550": {
-    "repo": "android_kernel_samsung_sm8550_TabS9",
+    "repo": "YuzakiKokuban/android_kernel_samsung_sm8550_TabS9",
     "defconfig": "kalama_gki_defconfig",
     "localversion_base": "-android13-Kokuban-Hutao-CYD9",
     "lto": "thin",
