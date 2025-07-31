@@ -88,3 +88,8 @@
 ### 3. `.github/workflows/` - 自动化工作流
 
 * **`0-add-new-project.yml`**: **(推荐)** 一键式交互向导，用于向 CI 中心添加新的内核项目。
+* **`1-setup-kernel-repos.yml`**: **一键式** 初始化/同步所有内核仓库的配置，包括 CI 触发器和 Webhook。
+* **`2-update-kernelsu.yml`**: **手动** 为指定的项目和分支更新 KernelSU 源码。
+* **`3-upstream-watcher.yml`**: **自动** 监视上游 KernelSU 仓库的更新。
+* **`4-universal-build.yml`**: **核心构建工作流**，执行所有内核编译任务。
+* **`5-deploy-push-server.yml`**: **推送服务部署流**，当 `push_server/` 目录更新时，自动将应用部署到您的服务器。
