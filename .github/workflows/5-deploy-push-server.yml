@@ -13,7 +13,7 @@ jobs:
       - name: Checkout Repository
         uses: actions/checkout@v4
 
-      - name: Deploy to Azure Server
+      - name: Deploy to Azure Server with Retry
         uses: appleboy/ssh-action@master
         with:
           host: ${{ secrets.PUSH_SERVER_HOST }}
@@ -21,49 +21,68 @@ jobs:
           key: ${{ secrets.PUSH_SERVER_SSH_KEY }}
           envs: TELEGRAM_BOT_TOKEN
           script: |
-            set -e
+            # 新增：部署重试逻辑
+            MAX_RETRIES=5
+            SUCCESS=false
 
-            APP_DIR="/home/webhook"
-            REPO_URL="https://github.com/${{ github.repository }}.git"
-            BRANCH_NAME="${{ github.ref_name }}"
+            for i in $(seq 1 $MAX_RETRIES); do
+              echo "--- 部署尝试: $i / $MAX_RETRIES ---"
+              # 使用子 shell 执行部署命令，这样即使 set -e 导致失败，主脚本也能继续循环
+              (
+                set -e
 
-            echo "--- 正在部署机器人到 $APP_DIR ---"
+                APP_DIR="/home/webhook"
+                REPO_URL="https://github.com/${{ github.repository }}.git"
+                BRANCH_NAME="${{ github.ref_name }}"
 
-            # 确保应用目录存在且权限正确
-            sudo mkdir -p "$APP_DIR"
-            sudo chown ${{ secrets.PUSH_SERVER_USER }}:${{ secrets.PUSH_SERVER_USER }} "$APP_DIR"
-            cd "$APP_DIR"
+                echo "--- 正在部署机器人到 $APP_DIR ---"
 
-            # 修正：采用更健壮的“原地初始化”方法
-            if [ ! -d ".git" ]; then
-              echo "Git 仓库不存在，正在进行初始化..."
-              git init
-              git remote add origin "$REPO_URL"
-              echo "正在拉取最新的代码..."
-              git fetch origin
-              git reset --hard "origin/$BRANCH_NAME"
-              # 确保本地分支跟踪远程分支
-              git branch --set-upstream-to="origin/$BRANCH_NAME" "$BRANCH_NAME"
-            else
-              echo "Git 仓库已存在，正在拉取最新的代码..."
-              git remote set-url origin "$REPO_URL"
-              git fetch origin
-              git reset --hard "origin/$BRANCH_NAME"
+                sudo mkdir -p "$APP_DIR"
+                sudo chown ${{ secrets.PUSH_SERVER_USER }}:${{ secrets.PUSH_SERVER_USER }} "$APP_DIR"
+                cd "$APP_DIR"
+
+                if [ ! -d ".git" ]; then
+                  echo "Git 仓库不存在，正在进行初始化..."
+                  git init
+                  git remote add origin "$REPO_URL"
+                  git fetch origin
+                  git checkout "$BRANCH_NAME"
+                else
+                  echo "Git 仓库已存在，正在拉取最新的代码..."
+                  git remote set-url origin "$REPO_URL"
+                  git fetch origin
+                  git checkout "$BRANCH_NAME"
+                  git reset --hard "origin/$BRANCH_NAME"
+                fi
+                
+                echo "正在设置 Python 虚拟环境..."
+                if [ ! -d "venv" ]; then
+                  python3 -m venv venv
+                fi
+                
+                source venv/bin/activate
+                echo "正在安装/更新依赖..."
+                pip install -r push_server/requirements.txt
+                
+                echo "正在创建 .env 文件..."
+                echo "TELEGRAM_BOT_TOKEN=${TELEGRAM_BOT_TOKEN}" > push_server/.env
+
+                echo "正在重启应用服务..."
+                sudo systemctl restart webhook
+              )
+
+              # 检查子 shell 的退出状态码
+              if [ $? -eq 0 ]; then
+                SUCCESS=true
+                echo "🎉 部署成功！机器人已是最新版本！"
+                break # 成功则跳出循环
+              else
+                echo "部署失败，将在 15 秒后重试..."
+                sleep 15
+              fi
+            done
+
+            if [ "$SUCCESS" = false ]; then
+              echo "经过 $MAX_RETRIES 次尝试后，部署仍然失败。"
+              exit 1 # 所有重试都失败后，才让整个步骤失败
             fi
-            
-            echo "正在设置 Python 虚拟环境..."
-            if [ ! -d "venv" ]; then
-              python3 -m venv venv
-            fi
-            
-            source venv/bin/activate
-            echo "正在安装/更新依赖..."
-            pip install -r push_server/requirements.txt
-            
-            echo "正在创建 .env 文件..."
-            echo "TELEGRAM_BOT_TOKEN=${TELEGRAM_BOT_TOKEN}" > push_server/.env
-
-            echo "正在重启应用服务..."
-            sudo systemctl restart webhook
-            
-            echo "🎉 部署成功！机器人已是最新版本！"
