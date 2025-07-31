@@ -19,27 +19,32 @@ jobs:
           host: ${{ secrets.PUSH_SERVER_HOST }}
           username: ${{ secrets.PUSH_SERVER_USER }}
           key: ${{ secrets.PUSH_SERVER_SSH_KEY }}
-          # 修正：使用正确的参数名 'envs'，并传递 TELEGRAM_BOT_TOKEN
           envs: TELEGRAM_BOT_TOKEN
           script: |
             set -e
 
-            # 适配您的现有路径
             APP_DIR="/home/webhook"
             REPO_URL="https://github.com/${{ github.repository }}.git"
 
             echo "--- 正在部署机器人到 $APP_DIR ---"
 
-            if [ ! -d "$APP_DIR" ]; then
-              echo "应用目录不存在，正在进行首次克隆..."
-              # 假设目录已存在且权限正确
-              git clone "$REPO_URL" "$APP_DIR"
-            fi
-
+            # 确保应用目录存在且权限正确
+            sudo mkdir -p "$APP_DIR"
+            sudo chown ${{ secrets.PUSH_SERVER_USER }}:${{ secrets.PUSH_SERVER_USER }} "$APP_DIR"
             cd "$APP_DIR"
-            echo "正在拉取最新的代码..."
-            git fetch origin
-            git reset --hard origin/${{ github.ref_name }}
+
+            # 修正：通过检查 .git 目录来判断是否为 Git 仓库
+            if [ ! -d ".git" ]; then
+              echo "Git 仓库不存在，正在进行首次克隆..."
+              # 克隆到当前目录
+              git clone "$REPO_URL" .
+            else
+              echo "Git 仓库已存在，正在拉取最新的代码..."
+              # 确保远程地址是正确的
+              git remote set-url origin "$REPO_URL"
+              git fetch origin
+              git reset --hard origin/${{ github.ref_name }}
+            fi
             
             echo "正在设置 Python 虚拟环境..."
             if [ ! -d "venv" ]; then
@@ -50,12 +55,10 @@ jobs:
             echo "正在安装/更新依赖..."
             pip install -r push_server/requirements.txt
             
-            # 将 Secret 写入 .env 文件，供 systemd 服务加载
             echo "正在创建 .env 文件..."
             echo "TELEGRAM_BOT_TOKEN=${TELEGRAM_BOT_TOKEN}" > push_server/.env
 
             echo "正在重启应用服务..."
-            # 适配您的现有服务名
             sudo systemctl restart webhook
             
             echo "🎉 部署成功！机器人已是最新版本！"
