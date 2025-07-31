@@ -1,0 +1,62 @@
+# .github/workflows/5-deploy-push-server.yml
+name: 5. Deploy Push Server
+on:
+  push:
+    paths:
+      - 'push_server/**'
+  workflow_dispatch:
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: Deploy to Azure Server
+        uses: appleboy/ssh-action@master
+        with:
+          host: ${{ secrets.PUSH_SERVER_HOST }}
+          username: ${{ secrets.PUSH_SERVER_USER }}
+          key: ${{ secrets.PUSH_SERVER_SSH_KEY }}
+          # 将机器人令牌作为环境变量传递给脚本
+          env:
+            TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          script: |
+            set -e
+
+            # 适配您的现有路径
+            APP_DIR="/home/webhook"
+            REPO_URL="https://github.com/${{ github.repository }}.git"
+
+            echo "--- 正在部署机器人到 $APP_DIR ---"
+
+            if [ ! -d "$APP_DIR" ]; then
+              echo "应用目录不存在，正在进行首次克隆..."
+              # 假设目录已存在且权限正确
+              git clone "$REPO_URL" "$APP_DIR"
+            fi
+
+            cd "$APP_DIR"
+            echo "正在拉取最新的代码..."
+            git fetch origin
+            git reset --hard origin/${{ github.ref_name }}
+            
+            echo "正在设置 Python 虚拟环境..."
+            if [ ! -d "venv" ]; then
+              python3 -m venv venv
+            fi
+            
+            source venv/bin/activate
+            echo "正在安装/更新依赖..."
+            pip install -r push_server/requirements.txt
+            
+            # 将 Secret 写入 .env 文件，供 systemd 服务加载
+            echo "正在创建 .env 文件..."
+            echo "TELEGRAM_BOT_TOKEN=${TELEGRAM_BOT_TOKEN}" > push_server/.env
+
+            echo "正在重启应用服务..."
+            # 适配您的现有服务名
+            sudo systemctl restart webhook
+            
+            echo "🎉 部署成功！机器人已是最新版本！"
