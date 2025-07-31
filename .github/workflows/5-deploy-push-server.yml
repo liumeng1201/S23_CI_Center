@@ -19,9 +19,8 @@ jobs:
           host: ${{ secrets.PUSH_SERVER_HOST }}
           username: ${{ secrets.PUSH_SERVER_USER }}
           key: ${{ secrets.PUSH_SERVER_SSH_KEY }}
-          # 将机器人令牌作为环境变量传递给脚本
-          env:
-            TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          # 修正：使用正确的参数名 'envs'，并传递 TELEGRAM_BOT_TOKEN
+          envs: TELEGRAM_BOT_TOKEN
           script: |
             set -e
 
