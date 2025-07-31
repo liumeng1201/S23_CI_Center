@@ -5,7 +5,7 @@ on:
       commit_message:
         description: '请输入本次同步操作的 Commit 信息'
         required: true
-        default: 'ci: Sync central CI files'
+        default: 'ci: Sync central CI files and webhooks'
 jobs:
   setup:
     runs-on: ubuntu-latest
@@ -15,50 +15,71 @@ jobs:
       - name: Configure each kernel repository
         env:
           ADMIN_TOKEN: ${{ secrets.ADMIN_TOKEN }}
+          WEBHOOK_SECRET: ${{ secrets.PUSH_SERVER_WEBHOOK_SECRET }}
           COMMIT_MESSAGE: ${{ github.event.inputs.commit_message }}
         run: |
           git config --global user.name "GitHub Actions Setup"
           git config --global user.email "actions@github.com"
 
-          TARGET_BRANCHES=("main" "ksu" "mksu" "sukisuultra")
           for project_key in $(jq -r 'keys[]' ${{ github.workspace }}/configs/projects.json); do
-            PROJECT_REPO=$(jq -r --arg PKEY "$project_key" '.[$PKEY].repo' ${{ github.workspace }}/configs/projects.json)
+            PROJECT_CONFIG=$(jq -r --arg PKEY "$project_key" '.[$PKEY]' ${{ github.workspace }}/configs/projects.json)
+            PROJECT_REPO=$(echo "$PROJECT_CONFIG" | jq -r '.repo')
+            
             echo "--- Processing: $PROJECT_REPO ---"
             git clone "https://x-access-token:$ADMIN_TOKEN@github.com/$PROJECT_REPO.git" "temp_kernel"
             cd temp_kernel
 
+            # --- Sync CI Files ---
+            TARGET_BRANCHES=("main" "ksu" "mksu" "sukisuultra")
             REMOTE_BRANCHES=$(git branch -r | sed 's|origin/||' | grep -v 'HEAD ->')
-
             for branch in "${TARGET_BRANCHES[@]}"; do
               if echo "$REMOTE_BRANCHES" | grep -q "^ *${branch}$"; then
                 echo "Configuring branch: $branch"
                 git checkout "$branch"
-
-                # 清理旧文件，已加入 update.sh
                 rm -rf .github/workflows build*.sh update-kernelsu.yml update.sh
-
-                # 创建新的 CI 触发器
                 mkdir -p .github/workflows
                 cp ${{ github.workspace }}/templates/trigger-central-build.yml.tpl .github/workflows/trigger-central-build.yml
                 sed -i "s|__PROJECT_KEY__|${project_key}|g" .github/workflows/trigger-central-build.yml
                 sed -i "s|__REPO_OWNER__|${{ github.repository_owner }}|g" .github/workflows/trigger-central-build.yml
-
-                # 同步 .gitignore 文件
-                echo "Syncing .gitignore..."
                 cp ${{ github.workspace }}/configs/universal.gitignore ./.gitignore
-
-                # 提交所有变动
                 if [[ -n $(git status --porcelain) ]]; then
                   git add .
                   git commit -m "$COMMIT_MESSAGE (branch: $branch)"
                 fi
               else
-                echo "Branch '$branch' not found in $PROJECT_REPO, skipping."
+                echo "Branch '$branch' not found in $PROJECT_REPO, skipping file sync."
               fi
             done
-
             echo "Pushing all updated branches..."
             git push --all
+            cd ..
 
-            cd .. && rm -rf temp_kernel
+            # --- Manage Webhook ---
+            PUSH_SERVER_CONFIG=$(echo "$PROJECT_CONFIG" | jq -r '.push_server')
+            if [ "$PUSH_SERVER_CONFIG" != "null" ] && [ "$(echo "$PUSH_SERVER_CONFIG" | jq -r '.enabled')" == "true" ]; then
+              WEBHOOK_URL=$(echo "$PUSH_SERVER_CONFIG" | jq -r '.webhook_url')
+              echo "Managing webhook for $PROJECT_REPO -> $WEBHOOK_URL"
+              
+              EXISTING_HOOK_ID=$(gh api "repos/$PROJECT_REPO/hooks" --jq ".[] | select(.config.url == \"$WEBHOOK_URL\") | .id")
+
+              if [ -n "$EXISTING_HOOK_ID" ]; then
+                echo "Webhook already exists. Updating it with the secret..."
+                gh api --method PATCH "repos/$PROJECT_REPO/hooks/$EXISTING_HOOK_ID" \
+                  -f 'events[]'='release' \
+                  -f "config[secret]=$WEBHOOK_SECRET" > /dev/null
+              else
+                echo "Webhook does not exist. Creating a new one with the secret..."
+                gh api --method POST "repos/$PROJECT_REPO/hooks" \
+                  -f name='web' -f active=true \
+                  -f 'events[]'='release' \
+                  -f "config[url]=$WEBHOOK_URL" \
+                  -f "config[content_type]=json" \
+                  -f "config[secret]=$WEBHOOK_SECRET" > /dev/null
+              fi
+              echo "Webhook management complete."
+            else
+              echo "Push server not enabled for $PROJECT_REPO, skipping webhook management."
+            fi
+            
+            rm -rf temp_kernel
           done

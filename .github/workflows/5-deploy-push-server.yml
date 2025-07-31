@@ -51,9 +51,8 @@ jobs:
           host: ${{ secrets.PUSH_SERVER_HOST }}
           username: ${{ secrets.PUSH_SERVER_USER }}
           key: ${{ secrets.PUSH_SERVER_SSH_KEY }}
-          envs: TELEGRAM_BOT_TOKEN
+          envs: TELEGRAM_BOT_TOKEN,PUSH_SERVER_WEBHOOK_SECRET
           script: |
-            # 主部署脚本，不再包含重试逻辑
             set -e
 
             APP_DIR="/home/webhook"
@@ -91,6 +90,7 @@ jobs:
             
             echo "正在创建 .env 文件..."
             echo "TELEGRAM_BOT_TOKEN=${TELEGRAM_BOT_TOKEN}" > push_server/.env
+            echo "WEBHOOK_SECRET=${PUSH_SERVER_WEBHOOK_SECRET}" >> push_server/.env
 
             echo "正在重启应用服务..."
             sudo systemctl restart webhook
