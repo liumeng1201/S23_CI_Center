@@ -47,6 +47,9 @@ jobs:
 
       - name: Deploy to Azure Server
         uses: appleboy/ssh-action@master
+        env:
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          PUSH_SERVER_WEBHOOK_SECRET: ${{ secrets.PUSH_SERVER_WEBHOOK_SECRET }}
         with:
           host: ${{ secrets.PUSH_SERVER_HOST }}
           username: ${{ secrets.PUSH_SERVER_USER }}
