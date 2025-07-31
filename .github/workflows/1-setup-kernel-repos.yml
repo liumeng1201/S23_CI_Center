@@ -71,7 +71,7 @@ jobs:
               else
                 echo "Webhook does not exist. Creating a new one with the secret..."
                 gh api --method POST "repos/$PROJECT_REPO/hooks" \
-                  -f name='web' -f active=true \
+                  -f name='web' -F active=true \
                   -f 'events[]'='release' \
                   -f "config[url]=$WEBHOOK_URL" \
                   -f "config[content_type]=json" \
