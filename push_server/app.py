@@ -15,34 +15,38 @@ from peewee import (
 )
 from apscheduler.schedulers.background import BackgroundScheduler
 
-# --- 配置 ---
-TELEGRAM_BOT_TOKEN = os.environ.get('TELEGRAM_BOT_TOKEN', 'YOUR_TOKEN_HERE')
-WEBHOOK_SECRET = os.environ.get('WEBHOOK_SECRET')
+# --- 全局变量 ---
+TELEGRAM_BOT_TOKEN = None
+WEBHOOK_SECRET = None
+TARGETS = []
 GITHUB_TARGET_USER = 'YuzakiKokuban'
 DB_FILE = "sent_messages.db"
 CONFIG_FILE = "config.json"
 CLEANUP_DAYS = 7
 
-# --- 全局变量 ---
-TARGETS = []
 http_session = requests.Session()
 FILE_ID_CACHE = {}
 app = Flask(__name__)
 
 # --- 加载配置的函数 ---
 def load_config():
-    global TARGETS
+    global TARGETS, TELEGRAM_BOT_TOKEN, WEBHOOK_SECRET
     try:
         with open(CONFIG_FILE, 'r', encoding='utf-8') as f:
             config_data = json.load(f)
             TARGETS = config_data.get('targets', [])
-            print(f"成功从 {CONFIG_FILE} 加载了 {len(TARGETS)} 个推送目标喵~")
-    except FileNotFoundError:
-        print(f"警告: 配置文件 {CONFIG_FILE} 未找到！将不会有任何推送目标。")
-        TARGETS = []
-    except json.JSONDecodeError:
-        print(f"错误: 配置文件 {CONFIG_FILE} 格式不正确！请检查 JSON 语法。")
-        TARGETS = []
+            TELEGRAM_BOT_TOKEN = config_data.get('telegram_bot_token')
+            WEBHOOK_SECRET = config_data.get('webhook_secret')
+            
+            print(f"成功从 {CONFIG_FILE} 加载了配置喵~")
+            if not TELEGRAM_BOT_TOKEN or 'placeholder' in TELEGRAM_BOT_TOKEN:
+                print("警告: telegram_bot_token 未在 config.json 中正确配置！")
+            if not WEBHOOK_SECRET or 'placeholder' in WEBHOOK_SECRET:
+                print("警告: webhook_secret 未在 config.json 中正确配置！签名验证将不会启用。")
+
+    except Exception as e:
+        print(f"加载配置文件 {CONFIG_FILE} 出错: {e}")
+        TARGETS, TELEGRAM_BOT_TOKEN, WEBHOOK_SECRET = [], None, None
 
 # --- 数据库设置 ---
 db = SqliteDatabase(DB_FILE)
@@ -116,7 +120,7 @@ def cleanup_old_messages():
 @app.route('/webhook', methods=['POST'])
 def github_webhook():
     # --- Webhook 签名验证 ---
-    if WEBHOOK_SECRET:
+    if WEBHOOK_SECRET and 'placeholder' not in WEBHOOK_SECRET:
         signature = request.headers.get('X-Hub-Signature-256')
         if not signature: abort(403)
         sha_name, signature_hex = signature.split('=', 1)
@@ -125,7 +129,7 @@ def github_webhook():
         if not hmac.compare_digest(mac.hexdigest(), signature_hex): abort(403)
         print("签名验证成功喵~ 是主人发的请求！")
     else:
-        print("警告: WEBHOOK_SECRET 未设置，跳过签名验证。")
+        print("警告: WEBHOOK_SECRET 未配置，跳过签名验证。")
 
     if not TARGETS:
         return jsonify({'status': 'ignored', 'reason': 'no targets configured'}), 200
@@ -193,8 +197,6 @@ def index():
 
 # --- 主程序入口 ---
 if __name__ != '__main__':
-    if TELEGRAM_BOT_TOKEN == 'YOUR_TOKEN_HERE': print("警告: TELEGRAM_BOT_TOKEN 环境变量未设置！")
-    if not WEBHOOK_SECRET: print("警告: WEBHOOK_SECRET 环境变量未设置！签名验证将不会启用。")
     load_config()
     db.connect(reuse_if_open=True)
     db.create_tables([SentMessage], safe=True)
