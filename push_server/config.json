@@ -1,0 +1,12 @@
+{
+  "targets": [
+    {
+      "chat_id": "@BLBDSBD"
+    },
+    {
+      "chat_id": "@Sukiksu",
+      "message_thread_id": 20859,
+      "filter_tag": "SukiSUU"
+    }
+  ]
+}

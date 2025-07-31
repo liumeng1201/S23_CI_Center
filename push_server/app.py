@@ -1,5 +1,6 @@
 import os
 import datetime
+import json
 from flask import Flask, request, jsonify
 import requests
 from peewee import (
@@ -13,23 +14,32 @@ from peewee import (
 from apscheduler.schedulers.background import BackgroundScheduler
 
 # --- 配置 ---
-# 修改：从环境变量读取 Token，如果环境变量不存在，则使用一个无效的默认值以防止启动失败
 TELEGRAM_BOT_TOKEN = os.environ.get('TELEGRAM_BOT_TOKEN', 'YOUR_TOKEN_HERE')
 GITHUB_TARGET_USER = 'YuzakiKokuban'
 DB_FILE = "sent_messages.db"
+CONFIG_FILE = "config.json" # 新增：配置文件路径
 CLEANUP_DAYS = 7
 
-# --- 推送目标 ---
-TARGETS = [
-    {
-        'chat_id': '@BLBDSBD'
-    },
-    {
-        'chat_id': '@Sukiksu',
-        'message_thread_id': 20859,
-        'filter_tag': 'SukiSUU'
-    }
-]
+# --- 全局变量 ---
+TARGETS = [] # 修改：TARGETS 将从文件中加载
+http_session = requests.Session()
+FILE_ID_CACHE = {}
+app = Flask(__name__)
+
+# --- 新增：加载配置的函数 ---
+def load_config():
+    global TARGETS
+    try:
+        with open(CONFIG_FILE, 'r', encoding='utf-8') as f:
+            config_data = json.load(f)
+            TARGETS = config_data.get('targets', [])
+            print(f"成功从 {CONFIG_FILE} 加载了 {len(TARGETS)} 个推送目标喵~")
+    except FileNotFoundError:
+        print(f"警告: 配置文件 {CONFIG_FILE} 未找到！将不会有任何推送目标。")
+        TARGETS = []
+    except json.JSONDecodeError:
+        print(f"错误: 配置文件 {CONFIG_FILE} 格式不正确！请检查 JSON 语法。")
+        TARGETS = []
 
 # --- 数据库设置 ---
 db = SqliteDatabase(DB_FILE)
@@ -43,13 +53,7 @@ class SentMessage(Model):
     class Meta:
         database = db
 
-# --- 全局会话和缓存 ---
-http_session = requests.Session()
-FILE_ID_CACHE = {}
-
-app = Flask(__name__)
-
-# --- 消息发送函数 ---
+# --- 消息发送函数 (无变化) ---
 def send_message_to_target(message, target_config):
     api_url = f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/sendMessage"
     params = {'chat_id': target_config['chat_id'], 'text': message, 'parse_mode': 'Markdown'}
@@ -98,17 +102,14 @@ def send_document_by_id(caption, file_id, target_config):
         print(f"用 file_id 发送文件到 {target_config['chat_id']} 时出错惹: {e}")
         return None
 
-# --- 清理旧消息的函数 ---
+# --- 清理旧消息的函数 (无变化) ---
 def cleanup_old_messages():
     print("\n--- 开始执行每日清理任务喵 ---")
     cleanup_threshold = datetime.datetime.now() - datetime.timedelta(days=CLEANUP_DAYS)
-    
     old_messages = SentMessage.select().where(SentMessage.sent_at < cleanup_threshold)
-    
     if not old_messages:
         print("没有找到需要清理的旧消息哦~")
         return
-
     count = 0
     for msg in old_messages:
         try:
@@ -123,13 +124,16 @@ def cleanup_old_messages():
                 response.raise_for_status()
         except requests.exceptions.RequestException as e:
             print(f"删除消息 (ID: {msg.message_id}) 时出错: {e}")
-    
     print(f"清理任务完成，一共清理了 {count} 条旧消息喵！")
 
 @app.route('/webhook', methods=['POST'])
 def github_webhook():
     print("\n--- 收到一个新的 Webhook 请求喵 ---")
     
+    if not TARGETS:
+        print("警告: 没有配置任何推送目标，忽略此请求。")
+        return jsonify({'status': 'ignored', 'reason': 'no targets configured'}), 200
+
     if request.headers.get('X-GitHub-Event') != 'release':
         return jsonify({'status': 'ignored'}), 200
 
@@ -243,6 +247,8 @@ def index():
 if __name__ != '__main__':
     if TELEGRAM_BOT_TOKEN == 'YOUR_TOKEN_HERE':
         print("警告: TELEGRAM_BOT_TOKEN 环境变量未设置！机器人将无法工作。")
+
+    load_config() # 修改：在应用启动时加载配置
 
     print("初始化数据库和定时任务喵...")
     db.connect(reuse_if_open=True)
