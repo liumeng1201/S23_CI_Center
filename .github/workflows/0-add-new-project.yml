@@ -7,44 +7,25 @@ on:
         description: '项目唯一标识 (例如 s26_sm8850)'
         required: true
       core_config:
-        description: |-
-          核心配置 (4行, 严格按顺序):
-          1. 仓库路径 (例: YuzakiKokuban/android_kernel_samsung_sm8850)
-          2. Defconfig 文件名
-          3. 内核版本基础字符串
-          4. 刷机包文件名前缀
-        type: string
+        description: '核心配置 (4项, 用英文逗号分隔): 1.仓库路径,2.Defconfig,3.版本基础字符串,4.刷机包前缀'
         required: true
       build_config:
-        description: |-
-          编译选项 (3行, 严格按顺序):
-          1. LTO (thin, full 或留空)
-          2. 版本号方法 (param 或 file)
-          3. 是否需要额外HOST环境 (true 或 false)
-        type: string
+        description: '编译选项 (3项, 用英文逗号分隔): 1.LTO(thin/full/留空),2.版本号方法(param/file),3.额外HOST环境(true/false)'
         required: true
       anykernel_config:
-        description: |-
-          AnyKernel3 配置 (2行, 严格按顺序):
-          1. AnyKernel3 仓库 URL
-          2. AnyKernel3 分支名
-        type: string
+        description: 'AnyKernel3 配置 (2项, 用英文逗号分隔): 1.仓库URL,2.分支名'
         required: true
       toolchain_urls:
-        description: '工具链下载地址 (每个 URL 占一行)'
-        type: string
+        description: '工具链下载地址 (多个URL用英文逗号分隔)'
         required: true
       toolchain_path_prefix:
         description: '工具链解压后的 prebuilts 相对路径 (例如 prebuilts)'
-        type: string
         required: true
       toolchain_path_exports:
-        description: '需要添加到 PATH 的工具链子目录 (每个路径占一行)'
-        type: string
+        description: '需要添加到 PATH 的工具链子目录 (多个路径用英文逗号分隔)'
         required: true
       disable_security:
-        description: '(可选) 需要禁用的三星安全特性 (每个特性占一行)'
-        type: string
+        description: '(可选) 需要禁用的三星安全特性 (多个特性用英文逗号分隔)'
         required: false
 
 jobs:
@@ -73,28 +54,28 @@ jobs:
           INPUT_TOOLCHAIN_PATH_EXPORTS: ${{ github.event.inputs.toolchain_path_exports }}
           INPUT_DISABLE_SECURITY: ${{ github.event.inputs.disable_security }}
         run: |
-          # --- Parse Inputs ---
+          # --- Parse Comma-Separated Inputs ---
           # Core Config
-          REPO=$(echo "$INPUT_CORE_CONFIG" | sed -n '1p' | xargs)
-          DEFCONFIG=$(echo "$INPUT_CORE_CONFIG" | sed -n '2p' | xargs)
-          LOCALVERSION_BASE=$(echo "$INPUT_CORE_CONFIG" | sed -n '3p' | xargs)
-          ZIP_NAME_PREFIX=$(echo "$INPUT_CORE_CONFIG" | sed -n '4p' | xargs)
+          REPO=$(echo "$INPUT_CORE_CONFIG" | cut -d',' -f1 | xargs)
+          DEFCONFIG=$(echo "$INPUT_CORE_CONFIG" | cut -d',' -f2 | xargs)
+          LOCALVERSION_BASE=$(echo "$INPUT_CORE_CONFIG" | cut -d',' -f3 | xargs)
+          ZIP_NAME_PREFIX=$(echo "$INPUT_CORE_CONFIG" | cut -d',' -f4 | xargs)
           
           # Build Config
-          LTO=$(echo "$INPUT_BUILD_CONFIG" | sed -n '1p' | xargs)
-          VERSION_METHOD=$(echo "$INPUT_BUILD_CONFIG" | sed -n '2p' | xargs)
-          EXTRA_HOST_ENV=$(echo "$INPUT_BUILD_CONFIG" | sed -n '3p' | xargs)
+          LTO=$(echo "$INPUT_BUILD_CONFIG" | cut -d',' -f1 | xargs)
+          VERSION_METHOD=$(echo "$INPUT_BUILD_CONFIG" | cut -d',' -f2 | xargs)
+          EXTRA_HOST_ENV=$(echo "$INPUT_BUILD_CONFIG" | cut -d',' -f3 | xargs)
 
           # AnyKernel Config
-          ANYKERNEL_REPO=$(echo "$INPUT_AK3_CONFIG" | sed -n '1p' | xargs)
-          ANYKERNEL_BRANCH=$(echo "$INPUT_AK3_CONFIG" | sed -n '2p' | xargs)
+          ANYKERNEL_REPO=$(echo "$INPUT_AK3_CONFIG" | cut -d',' -f1 | xargs)
+          ANYKERNEL_BRANCH=$(echo "$INPUT_AK3_CONFIG" | cut -d',' -f2 | xargs)
 
-          # Multiline to JSON arrays
-          TOOLCHAIN_URLS_JSON=$(echo "$INPUT_TOOLCHAIN_URLS" | jq -R . | jq -s .)
-          TOOLCHAIN_PATH_EXPORTS_JSON=$(echo "$INPUT_TOOLCHAIN_PATH_EXPORTS" | jq -R . | jq -s .)
+          # Convert comma-separated strings to JSON arrays
+          TOOLCHAIN_URLS_JSON=$(echo "$INPUT_TOOLCHAIN_URLS" | tr ',' '\n' | jq -R . | jq -s .)
+          TOOLCHAIN_PATH_EXPORTS_JSON=$(echo "$INPUT_TOOLCHAIN_PATH_EXPORTS" | tr ',' '\n' | jq -R . | jq -s .)
           
           if [ -n "$INPUT_DISABLE_SECURITY" ]; then
-            DISABLE_SECURITY_JSON=$(echo "$INPUT_DISABLE_SECURITY" | jq -R . | jq -s .)
+            DISABLE_SECURITY_JSON=$(echo "$INPUT_DISABLE_SECURITY" | tr ',' '\n' | jq -R . | jq -s .)
           else
             DISABLE_SECURITY_JSON="[]"
           fi
@@ -163,7 +144,7 @@ jobs:
           
       - name: Display Next Steps
         run: |
-          REPO_URL=$(echo "${{ github.event.inputs.core_config }}" | sed -n '1p' | xargs)
+          REPO_URL=$(echo "${{ github.event.inputs.core_config }}" | cut -d',' -f1 | xargs)
           echo "========================================================================"
           echo "🎉 新项目 '${{ github.event.inputs.project_key }}' 已成功添加到 CI 中心！"
           echo ""
@@ -175,4 +156,3 @@ jobs:
           echo "2. 返回本仓库 (Kokuban_Kernel_CI_Center) 的 Actions 页面，"
           echo "   运行 '1. Setup Kernel Repositories' 工作流，为新仓库一键配置好触发器。"
           echo "========================================================================"
-
