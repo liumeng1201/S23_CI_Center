@@ -89,8 +89,11 @@ jobs:
             pip install -r push_server/requirements.txt
             
             echo "正在创建 .env 文件..."
-            echo "TELEGRAM_BOT_TOKEN=${TELEGRAM_BOT_TOKEN}" > push_server/.env
-            echo "WEBHOOK_SECRET=${PUSH_SERVER_WEBHOOK_SECRET}" >> push_server/.env
+            (
+              echo "TELEGRAM_BOT_TOKEN=${TELEGRAM_BOT_TOKEN}"
+              echo "WEBHOOK_SECRET=${PUSH_SERVER_WEBHOOK_SECRET}"
+            ) > push_server/.env
+            chmod 600 push_server/.env
 
             echo "正在重启应用服务..."
             sudo systemctl restart webhook
