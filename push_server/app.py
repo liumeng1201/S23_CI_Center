@@ -209,7 +209,7 @@ def process_release_assets(assets, repo_name, tag_name):
         else:
             sanitized_name = asset_name.replace('.', '-')
         
-        file_caption = (f"哥哥，附件来了。\n*仓库 (Repo)*: `{repo_name}`\n"
+        file_caption = (f"兄长大人，附件来了。\n*仓库 (Repo)*: `{repo_name}`\n"
                         f"*版本 (Version)*: `{tag_name}`\n\n📄 *文件 (File)*: `{sanitized_name}`")
 
         targets_for_asset = [t for t in AppConfig.TARGETS if 'filter_tag' not in t or t['filter_tag'].lower() in tag_name.lower()]
