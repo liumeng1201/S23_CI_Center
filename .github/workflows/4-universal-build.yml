@@ -147,6 +147,15 @@ jobs:
             echo "当前分支 ($BRANCH_NAME) 不需要设置 KernelSU，跳过此步骤。"
           fi
           echo "KernelSU 设置步骤完成。"
+
+      # 新增：为 ccache 设置环境变量以提高命中率
+      - name: Setup ccache environment
+        run: |
+          echo "--- Setting up ccache environment ---"
+          echo "CCACHE_BASEDIR=${{ github.workspace }}/kernel_source" >> $GITHUB_ENV
+          echo "CCACHE_SLOPPINESS=time_macros" >> $GITHUB_ENV
+          echo "ccache base directory set to: ${{ github.workspace }}/kernel_source"
+
       - name: Run Universal Build Script
         id: build_script
         env: {GH_TOKEN: "${{ secrets.GH_TOKEN }}"}
@@ -155,13 +164,12 @@ jobs:
           cd ./kernel_source
           chmod +x ./build.sh
           ./build.sh
-      # 新增：无论成功与否，都上传构建产物
       - name: Upload Build Artifacts
-        if: always() # 确保此步骤总是运行
+        if: always()
         uses: actions/upload-artifact@v4
         with:
           name: build-artifacts-${{ env.PROJECT_KEY }}-${{ env.BRANCH_NAME }}-${{ github.run_id }}
           path: |
             kernel_source/out/*.zip
             kernel_source/kernel_build_log.txt
-          retention-days: 7 # 将产物保留7天
+          retention-days: 7
