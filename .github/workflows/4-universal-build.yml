@@ -26,150 +26,40 @@ on:
         default: true
   repository_dispatch:
     types: [build-kernel]
+
 jobs:
-  build:
+  # 此任务负责解析不同的触发类型，并为下一步准备统一的输入参数
+  prepare-inputs:
     runs-on: ubuntu-latest
-    env: {CCACHE_DIR: "${{ github.workspace }}/.ccache"}
+    outputs:
+      project_key: ${{ steps.parse.outputs.project_key }}
+      branch_name: ${{ steps.parse.outputs.branch_name }}
+      do_release: ${{ steps.parse.outputs.do_release }}
+      is_prerelease: ${{ steps.parse.outputs.is_prerelease }}
     steps:
-      - {uses: actions/checkout@v4}
-      - name: Install Dependencies
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y build-essential git libncurses5-dev bc bison flex libssl-dev p7zip-full lz4 cpio curl libelf-dev dwarves ccache jq
-      - name: Parse Project Configuration
-        id: config
+      - name: Parse Trigger Event
+        id: parse
         run: |
           if [ "${{ github.event_name }}" == "workflow_dispatch" ]; then
-            PROJECT_KEY="${{ github.event.inputs.project }}"
-            BRANCH_NAME="${{ github.event.inputs.branch }}"
-            DO_RELEASE="${{ github.event.inputs.do_release }}"
-            IS_PRERELEASE_INPUT="${{ github.event.inputs.is_prerelease }}"
+            echo "project_key=${{ github.event.inputs.project }}" >> $GITHUB_OUTPUT
+            echo "branch_name=${{ github.event.inputs.branch }}" >> $GITHUB_OUTPUT
+            echo "do_release=${{ github.event.inputs.do_release }}" >> $GITHUB_OUTPUT
+            echo "is_prerelease=${{ github.event.inputs.is_prerelease }}" >> $GITHUB_OUTPUT
           else
-            PROJECT_KEY="${{ github.event.client_payload.project }}"
-            BRANCH_NAME="${{ github.event.client_payload.branch }}"
-            DO_RELEASE="true"
-            IS_PRERELEASE_INPUT="true"
+            echo "project_key=${{ github.event.client_payload.project }}" >> $GITHUB_OUTPUT
+            echo "branch_name=${{ github.event.client_payload.branch }}" >> $GITHUB_OUTPUT
+            echo "do_release=true" >> $GITHUB_OUTPUT
+            echo "is_prerelease=true" >> $GITHUB_OUTPUT
           fi
-          echo "PROJECT_KEY=${PROJECT_KEY}" >> $GITHUB_ENV
-          echo "BRANCH_NAME=${BRANCH_NAME}" >> $GITHUB_ENV
-          echo "DO_RELEASE=${DO_RELEASE}" >> $GITHUB_ENV
-          echo "IS_PRERELEASE_INPUT=${IS_PRERELEASE_INPUT}" >> $GITHUB_ENV
-          CONFIG_JSON=$(cat ${{ github.workspace }}/configs/projects.json | jq -r --arg PKEY "$PROJECT_KEY" '.[$PKEY]')
-          if [ -z "$CONFIG_JSON" ] || [ "$CONFIG_JSON" == "null" ]; then echo "错误: 未找到项目 '$PROJECT_KEY' 的配置。"; exit 1; fi
 
-          echo "PROJECT_REPO=$(echo $CONFIG_JSON | jq -r .repo)" >> $GITHUB_ENV
-          echo "PROJECT_DEFCONFIG=$(echo $CONFIG_JSON | jq -r .defconfig)" >> $GITHUB_ENV
-          echo "PROJECT_LOCALVERSION_BASE=$(echo $CONFIG_JSON | jq -r .localversion_base)" >> $GITHUB_ENV
-          echo "PROJECT_LTO=$(echo $CONFIG_JSON | jq -r .lto)" >> $GITHUB_ENV
-          echo "PROJECT_SUPPORTED_KSU=$(echo $CONFIG_JSON | jq -c .supported_ksu)" >> $GITHUB_ENV
-          echo "PROJECT_TOOLCHAIN_URLS=$(echo $CONFIG_JSON | jq -c .toolchain_urls)" >> $GITHUB_ENV
-          echo "PROJECT_TOOLCHAIN_PATH_PREFIX=$(echo $CONFIG_JSON | jq -r .toolchain_path_prefix)" >> $GITHUB_ENV
-          echo "PROJECT_TOOLCHAIN_PATH_EXPORTS=$(echo $CONFIG_JSON | jq -c .toolchain_path_exports)" >> $GITHUB_ENV
-
-          ANYKERNEL_REPO_URL=$(echo $CONFIG_JSON | jq -r .anykernel_repo)
-          echo "PROJECT_ANYKERNEL_REPO=${ANYKERNEL_REPO_URL}" >> $GITHUB_ENV
-          ANYKERNEL_REPO_SLUG=$(echo "$ANYKERNEL_REPO_URL" | sed 's|https://github.com/||' | sed 's|\.git$||')
-          echo "PROJECT_ANYKERNEL_REPO_SLUG=${ANYKERNEL_REPO_SLUG}" >> $GITHUB_ENV
-
-          echo "PROJECT_ANYKERNEL_BRANCH=$(echo $CONFIG_JSON | jq -r .anykernel_branch)" >> $GITHUB_ENV
-          echo "PROJECT_ZIP_NAME_PREFIX=$(echo $CONFIG_JSON | jq -r .zip_name_prefix)" >> $GITHUB_ENV
-          echo "PROJECT_VERSION_METHOD=$(echo $CONFIG_JSON | jq -r '.version_method // "param"')" >> $GITHUB_ENV
-          echo "PROJECT_EXTRA_HOST_ENV=$(echo $CONFIG_JSON | jq -r '.extra_host_env // "false"')" >> $GITHUB_ENV
-          echo "PROJECT_DISABLE_SECURITY=$(echo $CONFIG_JSON | jq -c '.disable_security // []')" >> $GITHUB_ENV
-      - name: Checkout Kernel Repository
-        uses: actions/checkout@v4
-        with: {repository: "${{ env.PROJECT_REPO }}", ref: "${{ env.BRANCH_NAME }}", path: kernel_source, submodules: 'recursive'}
-      - name: Cache Toolchain
-        id: toolchain-cache
-        uses: actions/cache@v4
-        with: {path: kernel_source/toolchain, key: "${{ runner.os }}-toolchain-${{ env.PROJECT_KEY }}"}
-      - name: Download and Extract Toolchain
-        if: steps.toolchain-cache.outputs.cache-hit != 'true'
-        working-directory: kernel_source
-        run: |
-          echo "未找到工具链缓存，开始下载..."
-          URLS=$(echo '${{ env.PROJECT_TOOLCHAIN_URLS }}' | jq -r '.[]')
-          PART_FILES=""
-          i=0
-          for url in $URLS; do
-            part_file="toolchain.part$i"
-            wget -O "$part_file" "$url"
-            PART_FILES="$PART_FILES $part_file"
-            i=$((i+1))
-          done
-          cat $PART_FILES > toolchain.tar.gz
-          mkdir -p ./toolchain && tar -xzvf toolchain.tar.gz -C ./toolchain/
-          rm $PART_FILES toolchain.tar.gz
-      - name: Cache ccache
-        uses: actions/cache@v4
-        with:
-          path: ${{ env.CCACHE_DIR }}
-          key: ${{ runner.os }}-ccache-${{ env.PROJECT_KEY }}-${{ env.BRANCH_NAME }}
-          restore-keys: |
-            ${{ runner.os }}-ccache-${{ env.PROJECT_KEY }}-
-      - name: Get AnyKernel3 Remote Commit Hash
-        id: get_ak3_hash
-        run: |
-          HASH=$(git ls-remote ${{ env.PROJECT_ANYKERNEL_REPO }} ${{ env.PROJECT_ANYKERNEL_BRANCH }} | cut -f1)
-          if [ -z "$HASH" ]; then echo "Error: Could not get remote commit hash for AnyKernel3."; exit 1; fi
-          echo "AnyKernel3 remote hash: $HASH"
-          echo "hash=$HASH" >> $GITHUB_OUTPUT
-      - name: Cache AnyKernel3 Repository
-        uses: actions/cache@v4
-        id: anykernel-cache
-        with:
-          path: anykernel_repo
-          key: anykernel-${{ env.PROJECT_KEY }}-${{ steps.get_ak3_hash.outputs.hash }}
-          restore-keys: |
-            anykernel-${{ env.PROJECT_KEY }}-
-      - name: Checkout AnyKernel3 if cache not hit
-        if: steps.anykernel-cache.outputs.cache-hit != 'true'
-        uses: actions/checkout@v4
-        with:
-          repository: ${{ env.PROJECT_ANYKERNEL_REPO_SLUG }}
-          ref: ${{ env.PROJECT_ANYKERNEL_BRANCH }}
-          path: anykernel_repo
-          fetch-depth: 1
-      - name: Setup KernelSU based on branch
-        working-directory: ./kernel_source
-        run: |
-          echo "当前分支是: ${{ env.BRANCH_NAME }}"
-          if [[ "${{ env.BRANCH_NAME }}" == "sukisuultra" ]]; then
-            echo "正在为 sukisuultra 分支设置 KernelSU..."
-            curl -LSs "https://raw.githubusercontent.com/SukiSU-Ultra/SukiSU-Ultra/main/kernel/setup.sh" | bash -s susfs-main
-          elif [[ "${{ env.BRANCH_NAME }}" == "mksu" ]]; then
-            echo "正在为 mksu 分支设置 KernelSU..."
-            curl -LSs "https://raw.githubusercontent.com/5ec1cff/KernelSU/main/kernel/setup.sh" | bash -
-          elif [[ "${{ env.BRANCH_NAME }}" == "ksu" ]]; then
-            echo "正在为 ksu 分支设置 KernelSU..."
-            curl -LSs "https://raw.githubusercontent.com/tiann/KernelSU/main/kernel/setup.sh" | bash -
-          else
-            echo "当前分支 ($BRANCH_NAME) 不需要设置 KernelSU，跳过此步骤。"
-          fi
-          echo "KernelSU 设置步骤完成。"
-
-      # 新增：为 ccache 设置环境变量以提高命中率
-      - name: Setup ccache environment
-        run: |
-          echo "--- Setting up ccache environment ---"
-          echo "CCACHE_BASEDIR=${{ github.workspace }}/kernel_source" >> $GITHUB_ENV
-          echo "CCACHE_SLOPPINESS=time_macros" >> $GITHUB_ENV
-          echo "ccache base directory set to: ${{ github.workspace }}/kernel_source"
-
-      - name: Run Universal Build Script
-        id: build_script
-        env: {GH_TOKEN: "${{ secrets.GH_TOKEN }}"}
-        run: |
-          cp scripts/build.sh ./kernel_source/
-          cd ./kernel_source
-          chmod +x ./build.sh
-          ./build.sh
-      - name: Upload Build Artifacts
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: build-artifacts-${{ env.PROJECT_KEY }}-${{ env.BRANCH_NAME }}-${{ github.run_id }}
-          path: |
-            kernel_source/out/*.zip
-            kernel_source/kernel_build_log.txt
-          retention-days: 7
+  # 此任务调用可复用的构建工作流
+  call-reusable-build:
+    needs: prepare-inputs
+    uses: ./.github/workflows/reusable-build-job.yml
+    with:
+      project_key: ${{ needs.prepare-inputs.outputs.project_key }}
+      branch_name: ${{ needs.prepare-inputs.outputs.branch_name }}
+      do_release: ${{ needs.prepare-inputs.outputs.do_release }}
+      is_prerelease: ${{ needs.prepare-inputs.outputs.is_prerelease }}
+    secrets:
+      GH_TOKEN: ${{ secrets.GH_TOKEN }}
