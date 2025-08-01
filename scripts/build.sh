@@ -92,7 +92,12 @@ else
     MAKE_ARGS+=" LOCALVERSION=${FINAL_LOCALVERSION}"
 fi
 
-# 5. 编译内核
+# 5. 【新增】设置构建时间戳
+echo "--- 正在设置 KBUILD_BUILD_TIMESTAMP ---"
+export KBUILD_BUILD_TIMESTAMP=$(date -u +"%a %b %d %H:%M:%S %Z %Y")
+echo "Build timestamp set to: $KBUILD_BUILD_TIMESTAMP"
+
+# 6. 编译内核
 echo "--- 开始编译内核 (-j$(nproc)) ---"
 if command -v ccache &> /dev/null; then export CCACHE_EXEC=$(which ccache); ccache -M 5G; export PATH="/usr/lib/ccache:$PATH"; fi
 ccache -s
@@ -103,7 +108,7 @@ if [ "$VERSION_METHOD" == "file" ]; then echo -n > ./localversion; fi
 if [ $BUILD_STATUS -ne 0 ]; then echo "--- 内核编译失败！ ---"; exit 1; fi
 echo -e "\n--- 内核编译成功！ ---\n"
 
-# 6. 打包
+# 7. 打包
 cd out
 # 修改：不再 clone，而是从工作流准备好的缓存目录复制
 echo "--- 从缓存目录复制 AnyKernel3 ---"
@@ -118,7 +123,7 @@ final_name="${ZIP_NAME_PREFIX}_${kernel_release}_${VERSION_SUFFIX}_$(date '+%Y%m
 zip -r9 "../${final_name}.zip" . -x "*.zip" -x "tools/boot.img.lz4" -x "tools/libmagiskboot.so" -x "README.md" -x "LICENSE" -x '.*' -x '*/.*'
 cd ../..
 
-# 7. 发布
+# 8. 发布
 if [ "$AUTO_RELEASE" != "true" ]; then echo "--- 已跳过自动发布 ---"; exit 0; fi
 echo -e "\n--- 开始发布到 GitHub Release ---"
 if ! command -v gh &> /dev/null; then echo "错误: 未找到 'gh' 命令。"; exit 1; fi
@@ -130,3 +135,4 @@ PRERELEASE_FLAG=""
 if [ "$IS_PRERELEASE" == "true" ]; then PRERELEASE_FLAG="--prerelease"; RELEASE_TITLE="[预发布] ${RELEASE_TITLE}"; fi
 UPLOAD_FILE_PATH=$(realpath "out/${final_name}.zip")
 gh release create "$TAG" "$UPLOAD_FILE_PATH" --repo "$GITHUB_REPO" --title "$RELEASE_TITLE" --notes "$RELEASE_NOTES" --target "$BRANCH_NAME" $PRERELEASE_FLAG
+
