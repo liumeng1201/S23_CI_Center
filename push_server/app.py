@@ -305,7 +305,7 @@ def github_webhook():
     logging.info(f"检测到 'release' 的 'published' 事件，开始为 {repo_name} @ {tag_name} 处理。")
 
     # --- 4. 发送主消息 ---
-    message = (f"哥哥，快看！`{repo_name}` 有新的 Release 了哦。\n\n"
+    message = (f"兄长大人，快看！`{repo_name}` 有新的 Release 了哦。\n\n"
                f"*版本 (Version)*: `{tag_name}`\n*标题 (Title)*: {release_name}\n"
                f"*作者 (Author)*: `{author}`\n\n"
                f"总之，快去看看吧！ [点击这里跳转]({release_url})")
