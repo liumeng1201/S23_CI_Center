@@ -5,38 +5,76 @@ on:
       commit_message:
         description: '请输入本次同步操作的 Commit 信息'
         required: true
-        default: 'ci: Sync central CI files and webhooks'
+        default: 'ci: Sync central CI files and README'
+      readme_language:
+        description: '选择生成的 README.md 语言'
+        required: true
+        type: choice
+        options:
+          - both # 双语
+          - zh-CN # 仅中文
+          - en-US # 仅英文
+        default: 'both'
+
 jobs:
   setup:
     runs-on: ubuntu-latest
     steps:
-      - { uses: actions/checkout@v4 }
-      - { run: sudo apt-get install -y jq }
+      - uses: actions/checkout@v4
+      - run: sudo apt-get install -y jq
       - name: Configure each kernel repository
         env:
           ADMIN_TOKEN: ${{ secrets.ADMIN_TOKEN }}
           WEBHOOK_SECRET: ${{ secrets.PUSH_SERVER_WEBHOOK_SECRET }}
           COMMIT_MESSAGE: ${{ github.event.inputs.commit_message }}
+          README_LANG: ${{ github.event.inputs.readme_language }}
           GH_TOKEN: ${{ secrets.ADMIN_TOKEN }}
         run: |
           git config --global user.name "GitHub Actions Setup"
           git config --global user.email "actions@github.com"
 
           for project_key in $(jq -r 'keys[]' ${{ github.workspace }}/configs/projects.json); do
-            PROJECT_CONFIG=$(jq -r --arg PKEY "$project_key" '.[$PKEY]' ${{ github.workspace }}/configs/projects.json)
+            PROJECT_CONFIG=$(jq -c --arg PKEY "$project_key" '.[$PKEY]' ${{ github.workspace }}/configs/projects.json)
             PROJECT_REPO=$(echo "$PROJECT_CONFIG" | jq -r '.repo')
+            LOCALVERSION_BASE=$(echo "$PROJECT_CONFIG" | jq -r '.localversion_base')
             
             echo "--- Processing: $PROJECT_REPO ---"
             git clone "https://x-access-token:$ADMIN_TOKEN@github.com/$PROJECT_REPO.git" "temp_kernel"
             cd temp_kernel
 
-            # --- Sync CI Files ---
+            # --- Generate README.md dynamically from projects.json ---
+            README_TEMPLATE=$(cat ${{ github.workspace }}/templates/README.md.tpl)
+            
+            # Directly get device names from project config
+            DEVICE_NAME_CN=$(echo "$PROJECT_CONFIG" | jq -r '.readme_placeholders.DEVICE_NAME_CN // "未知设备"')
+            DEVICE_NAME_EN=$(echo "$PROJECT_CONFIG" | jq -r '.readme_placeholders.DEVICE_NAME_EN // "Unknown Device"')
+            
+            # Replace placeholders
+            README_CONTENT=${README_TEMPLATE//__DEVICE_NAME_CN__/$DEVICE_NAME_CN}
+            README_CONTENT=${README_CONTENT//__DEVICE_NAME_EN__/$DEVICE_NAME_EN}
+            README_CONTENT=${README_CONTENT//__PROJECT_REPO__/$PROJECT_REPO}
+            README_CONTENT=${README_CONTENT//__LOCALVERSION_BASE__/$LOCALVERSION_BASE}
+            
+            # Handle language selection
+            if [ "$README_LANG" == "zh-CN" ]; then
+                README_CONTENT=$(echo "$README_CONTENT" | sed '/<!-- BEGIN-EN -->/,/<!-- END-EN -->/d')
+            elif [ "$README_LANG" == "en-US" ]; then
+                README_CONTENT=$(echo "$README_CONTENT" | sed '/<!-- BEGIN-ZH -->/,/<!-- END-ZH -->/d')
+            fi
+            # Clean up markers for all cases
+            README_CONTENT=$(echo "$README_CONTENT" | sed 's/<!-- BEGIN-.. -->//g' | sed 's/<!-- END-.. -->//g')
+            
+            echo "Generated README.md for $project_key with language: $README_LANG"
+            
+            # --- Sync CI Files to all target branches ---
             TARGET_BRANCHES=("main" "ksu" "mksu" "sukisuultra")
             REMOTE_BRANCHES=$(git branch -r | sed 's|origin/||' | grep -v 'HEAD ->')
             for branch in "${TARGET_BRANCHES[@]}"; do
               if echo "$REMOTE_BRANCHES" | grep -q "^ *${branch}$"; then
                 echo "Configuring branch: $branch"
                 git checkout "$branch"
+                # Copy the generated README to the branch
+                echo "$README_CONTENT" > README.md
                 rm -rf .github/workflows build*.sh update-kernelsu.yml update.sh
                 mkdir -p .github/workflows
                 cp ${{ github.workspace }}/templates/trigger-central-build.yml.tpl .github/workflows/trigger-central-build.yml
@@ -56,15 +94,15 @@ jobs:
             cd ..
 
             # --- Manage Webhook ---
-            PUSH_SERVER_CONFIG=$(echo "$PROJECT_CONFIG" | jq -r '.push_server')
-            if [ "$PUSH_SERVER_CONFIG" != "null" ] && [ "$(echo "$PUSH_SERVER_CONFIG" | jq -r '.enabled')" == "true" ]; then
-              WEBHOOK_URL=$(echo "$PUSH_SERVER_CONFIG" | jq -r '.webhook_url')
+            PUSH_SERVER_CONFIG_ENABLED=$(echo "$PROJECT_CONFIG" | jq -r '.push_server.enabled')
+            if [ "$PUSH_SERVER_CONFIG_ENABLED" == "true" ]; then
+              WEBHOOK_URL=$(echo "$PROJECT_CONFIG" | jq -r '.push_server.webhook_url')
               echo "Managing webhook for $PROJECT_REPO -> $WEBHOOK_URL"
               
               EXISTING_HOOK_ID=$(gh api "repos/$PROJECT_REPO/hooks" --jq ".[] | select(.config.url == \"$WEBHOOK_URL\") | .id")
 
               if [ -n "$EXISTING_HOOK_ID" ]; then
-                echo "Webhook already exists. Updating it with the complete config object..."
+                echo "Webhook already exists. Updating it..."
                 gh api --method PATCH "repos/$PROJECT_REPO/hooks/$EXISTING_HOOK_ID" \
                   -f 'events[]'='release' \
                   -f "config[url]=$WEBHOOK_URL" \

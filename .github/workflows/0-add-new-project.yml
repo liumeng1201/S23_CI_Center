@@ -6,6 +6,9 @@ on:
       project_key:
         description: '项目唯一标识 (例如 s26_sm8850)'
         required: true
+      device_names:
+        description: '设备中英文名 (用英文逗号分隔): 三星 Galaxy S25 系列,Samsung Galaxy S25 Series'
+        required: true
       core_config:
         description: '核心配置 (4项, 用英文逗号分隔): 1.仓库路径,2.Defconfig,3.版本基础字符串,4.刷机包前缀'
         required: true
@@ -49,6 +52,7 @@ jobs:
       - name: Update Project Files
         env:
           INPUT_PROJECT_KEY: ${{ github.event.inputs.project_key }}
+          INPUT_DEVICE_NAMES: ${{ github.event.inputs.device_names }}
           INPUT_CORE_CONFIG: ${{ github.event.inputs.core_config }}
           INPUT_BUILD_CONFIG: ${{ github.event.inputs.build_config }}
           INPUT_AK3_CONFIG: ${{ github.event.inputs.anykernel_config }}
@@ -59,93 +63,57 @@ jobs:
           INPUT_WEBHOOK_URL: ${{ github.event.inputs.webhook_url }}
         run: |
           # --- Parse Comma-Separated Inputs ---
-          # Core Config
+          DEVICE_NAME_CN=$(echo "$INPUT_DEVICE_NAMES" | cut -d',' -f1 | xargs)
+          DEVICE_NAME_EN=$(echo "$INPUT_DEVICE_NAMES" | cut -d',' -f2 | xargs)
           REPO=$(echo "$INPUT_CORE_CONFIG" | cut -d',' -f1 | xargs)
           DEFCONFIG=$(echo "$INPUT_CORE_CONFIG" | cut -d',' -f2 | xargs)
           LOCALVERSION_BASE=$(echo "$INPUT_CORE_CONFIG" | cut -d',' -f3 | xargs)
           ZIP_NAME_PREFIX=$(echo "$INPUT_CORE_CONFIG" | cut -d',' -f4 | xargs)
-          
-          # Build Config
           LTO=$(echo "$INPUT_BUILD_CONFIG" | cut -d',' -f1 | xargs)
           VERSION_METHOD=$(echo "$INPUT_BUILD_CONFIG" | cut -d',' -f2 | xargs)
           EXTRA_HOST_ENV=$(echo "$INPUT_BUILD_CONFIG" | cut -d',' -f3 | xargs)
-
-          # AnyKernel Config
           ANYKERNEL_REPO=$(echo "$INPUT_AK3_CONFIG" | cut -d',' -f1 | xargs)
           ANYKERNEL_BRANCH=$(echo "$INPUT_AK3_CONFIG" | cut -d',' -f2 | xargs)
 
-          # Convert comma-separated strings to JSON arrays
+          # --- Convert comma-separated strings to JSON arrays ---
           TOOLCHAIN_URLS_JSON=$(echo "$INPUT_TOOLCHAIN_URLS" | tr ',' '\n' | jq -R . | jq -s .)
           TOOLCHAIN_PATH_EXPORTS_JSON=$(echo "$INPUT_TOOLCHAIN_PATH_EXPORTS" | tr ',' '\n' | jq -R . | jq -s .)
-          
           if [ -n "$INPUT_DISABLE_SECURITY" ]; then
             DISABLE_SECURITY_JSON=$(echo "$INPUT_DISABLE_SECURITY" | tr ',' '\n' | jq -R . | jq -s .)
           else
             DISABLE_SECURITY_JSON="[]"
           fi
 
-          # --- Build push_server object conditionally ---
+          # --- Build conditional JSON objects ---
           if [ -n "$INPUT_WEBHOOK_URL" ]; then
-            PUSH_SERVER_JSON=$(jq -n \
-              --argjson enabled true \
-              --arg url "$INPUT_WEBHOOK_URL" \
-              '{push_server: {enabled: $enabled, webhook_url: $url}}')
+            PUSH_SERVER_JSON=$(jq -n --argjson enabled true --arg url "$INPUT_WEBHOOK_URL" '{push_server: {enabled: $enabled, webhook_url: $url}}')
           else
-            PUSH_SERVER_JSON="{}" # An empty object
+            PUSH_SERVER_JSON="{}"
           fi
-
-          # --- Build the base project object ---
-          BASE_PROJECT_JSON=$(jq -n \
-            --arg repo "$REPO" \
-            --arg defconfig "$DEFCONFIG" \
-            --arg localversion_base "$LOCALVERSION_BASE" \
-            --arg lto "$LTO" \
-            --argjson supported_ksu '["sukisuultra", "mksu", "ksu"]' \
-            --argjson toolchain_urls "$TOOLCHAIN_URLS_JSON" \
-            --arg toolchain_path_prefix "$INPUT_TOOLCHAIN_PATH_PREFIX" \
-            --argjson toolchain_path_exports "$TOOLCHAIN_PATH_EXPORTS_JSON" \
-            --arg anykernel_repo "$ANYKERNEL_REPO" \
-            --arg anykernel_branch "$ANYKERNEL_BRANCH" \
-            --arg zip_name_prefix "$ZIP_NAME_PREFIX" \
-            --arg version_method "$VERSION_METHOD" \
-            --argjson extra_host_env $EXTRA_HOST_ENV \
-            --argjson disable_security "$DISABLE_SECURITY_JSON" \
-            '{
-              repo: $repo,
-              defconfig: $defconfig,
-              localversion_base: $localversion_base,
-              lto: $lto,
-              supported_ksu: $supported_ksu,
-              toolchain_urls: $toolchain_urls,
-              toolchain_path_prefix: $toolchain_path_prefix,
-              toolchain_path_exports: $toolchain_path_exports,
-              anykernel_repo: $anykernel_repo,
-              anykernel_branch: $anykernel_branch,
-              zip_name_prefix: $zip_name_prefix,
-              version_method: $version_method,
-              extra_host_env: $extra_host_env,
-              disable_security: $disable_security
-            }')
           
-          # Merge the base object with the conditional push_server object
-          FINAL_PROJECT_JSON=$(jq -n --argjson base "$BASE_PROJECT_JSON" --argjson push "$PUSH_SERVER_JSON" '$base + $push')
+          README_PLACEHOLDERS_JSON=$(jq -n --arg cn "$DEVICE_NAME_CN" --arg en "$DEVICE_NAME_EN" '{readme_placeholders: {DEVICE_NAME_CN: $cn, DEVICE_NAME_EN: $en}}')
 
-          # Update projects.json
-          jq --arg key "$INPUT_PROJECT_KEY" \
-             --argjson value "$FINAL_PROJECT_JSON" \
-             '. + {($key): $value}' \
-             configs/projects.json > tmp.json && mv tmp.json configs/projects.json
+          # --- Build the main project object ---
+          BASE_PROJECT_JSON=$(jq -n \
+            --arg repo "$REPO" --arg defconfig "$DEFCONFIG" --arg localversion_base "$LOCALVERSION_BASE" --arg lto "$LTO" \
+            --argjson supported_ksu '["sukisuultra", "mksu", "ksu"]' \
+            --argjson toolchain_urls "$TOOLCHAIN_URLS_JSON" --arg toolchain_path_prefix "$INPUT_TOOLCHAIN_PATH_PREFIX" \
+            --argjson toolchain_path_exports "$TOOLCHAIN_PATH_EXPORTS_JSON" --arg anykernel_repo "$ANYKERNEL_REPO" \
+            --arg anykernel_branch "$ANYKERNEL_BRANCH" --arg zip_name_prefix "$ZIP_NAME_PREFIX" \
+            --arg version_method "$VERSION_METHOD" --argjson extra_host_env $EXTRA_HOST_ENV \
+            --argjson disable_security "$DISABLE_SECURITY_JSON" \
+            '{ repo: $repo, defconfig: $defconfig, localversion_base: $localversion_base, lto: $lto, supported_ksu: $supported_ksu, toolchain_urls: $toolchain_urls, toolchain_path_prefix: $toolchain_path_prefix, toolchain_path_exports: $toolchain_path_exports, anykernel_repo: $anykernel_repo, anykernel_branch: $anykernel_branch, zip_name_prefix: $zip_name_prefix, version_method: $version_method, extra_host_env: $extra_host_env, disable_security: $disable_security }')
+          
+          # --- Merge all objects to create the final project entry ---
+          FINAL_PROJECT_JSON=$(jq -s '.[0] * .[1] * .[2]' <(echo "$BASE_PROJECT_JSON") <(echo "$README_PLACEHOLDERS_JSON") <(echo "$PUSH_SERVER_JSON"))
+
+          # --- Update all relevant files ---
+          jq --arg key "$INPUT_PROJECT_KEY" --argjson value "$FINAL_PROJECT_JSON" '. + {($key): $value}' configs/projects.json > tmp.json && mv tmp.json configs/projects.json
           echo "✅ Updated configs/projects.json"
-
-          # Update 2-update-kernelsu.yml
           yq e '.on.workflow_dispatch.inputs.project.options += ["'"$INPUT_PROJECT_KEY"'"]' -i .github/workflows/2-update-kernelsu.yml
           echo "✅ Updated .github/workflows/2-update-kernelsu.yml"
-
-          # Update 4-universal-build.yml
           yq e '.on.workflow_dispatch.inputs.project.options += ["'"$INPUT_PROJECT_KEY"'"]' -i .github/workflows/4-universal-build.yml
           echo "✅ Updated .github/workflows/4-universal-build.yml"
-
-          # Update 6-release-all-branches.yml
           yq e '.on.workflow_dispatch.inputs.project.options += ["'"$INPUT_PROJECT_KEY"'"]' -i .github/workflows/6-release-all-branches.yml
           echo "✅ Updated .github/workflows/6-release-all-branches.yml"
 
@@ -176,4 +144,3 @@ jobs:
           echo "2. 返回本仓库 (Kokuban_Kernel_CI_Center) 的 Actions 页面，"
           echo "   运行 '1. Setup Kernel Repositories' 工作流，为新仓库一键配置好触发器和 Webhook。"
           echo "========================================================================"
-
