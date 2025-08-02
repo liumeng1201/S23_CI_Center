@@ -163,7 +163,7 @@
       "build-tools/path/linux-x86",
       "clang/host/linux-x86/clang-r450784e/bin"
     ],
-    "anykernel_repo": "https://github.com/YuzakiKokuban/AnyKernel3",
+    "anykernel_repo": "https://github.com/YuzakiKokuban/AnyKernel3.git",
     "anykernel_branch": "kalama_tab",
     "zip_name_prefix": "TabS9_Kernel",
     "version_method": "param",
@@ -205,5 +205,6 @@
     "push_server": {
       "enabled": true,
       "webhook_url": "http://74.176.37.71:8080/webhook"
+    }
   }
 }
