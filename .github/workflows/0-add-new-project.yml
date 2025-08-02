@@ -27,6 +27,9 @@ on:
       disable_security:
         description: '(可选) 需要禁用的三星安全特性 (多个特性用英文逗号分隔)'
         required: false
+      webhook_url:
+        description: '(可选) 推送服务器的 Webhook URL。如果留空，则不启用推送。'
+        required: false
 
 jobs:
   add-project:
@@ -53,6 +56,7 @@ jobs:
           INPUT_TOOLCHAIN_PATH_PREFIX: ${{ github.event.inputs.toolchain_path_prefix }}
           INPUT_TOOLCHAIN_PATH_EXPORTS: ${{ github.event.inputs.toolchain_path_exports }}
           INPUT_DISABLE_SECURITY: ${{ github.event.inputs.disable_security }}
+          INPUT_WEBHOOK_URL: ${{ github.event.inputs.webhook_url }}
         run: |
           # --- Parse Comma-Separated Inputs ---
           # Core Config
@@ -80,9 +84,18 @@ jobs:
             DISABLE_SECURITY_JSON="[]"
           fi
 
-          # --- Update Files ---
-          # Build the new project JSON object
-          NEW_PROJECT_JSON=$(jq -n \
+          # --- Build push_server object conditionally ---
+          if [ -n "$INPUT_WEBHOOK_URL" ]; then
+            PUSH_SERVER_JSON=$(jq -n \
+              --argjson enabled true \
+              --arg url "$INPUT_WEBHOOK_URL" \
+              '{push_server: {enabled: $enabled, webhook_url: $url}}')
+          else
+            PUSH_SERVER_JSON="{}" # An empty object
+          fi
+
+          # --- Build the base project object ---
+          BASE_PROJECT_JSON=$(jq -n \
             --arg repo "$REPO" \
             --arg defconfig "$DEFCONFIG" \
             --arg localversion_base "$LOCALVERSION_BASE" \
@@ -113,10 +126,13 @@ jobs:
               extra_host_env: $extra_host_env,
               disable_security: $disable_security
             }')
+          
+          # Merge the base object with the conditional push_server object
+          FINAL_PROJECT_JSON=$(jq -n --argjson base "$BASE_PROJECT_JSON" --argjson push "$PUSH_SERVER_JSON" '$base + $push')
 
           # Update projects.json
           jq --arg key "$INPUT_PROJECT_KEY" \
-             --argjson value "$NEW_PROJECT_JSON" \
+             --argjson value "$FINAL_PROJECT_JSON" \
              '. + {($key): $value}' \
              configs/projects.json > tmp.json && mv tmp.json configs/projects.json
           echo "✅ Updated configs/projects.json"
@@ -154,5 +170,6 @@ jobs:
           echo "   其值为你的 Personal Access Token。"
           echo ""
           echo "2. 返回本仓库 (Kokuban_Kernel_CI_Center) 的 Actions 页面，"
-          echo "   运行 '1. Setup Kernel Repositories' 工作流，为新仓库一键配置好触发器。"
+          echo "   运行 '1. Setup Kernel Repositories' 工作流，为新仓库一键配置好触发器和 Webhook。"
           echo "========================================================================"
+
