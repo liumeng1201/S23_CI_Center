@@ -19,7 +19,7 @@ DISABLE_SECURITY_JSON="${PROJECT_DISABLE_SECURITY:-[]}"
 # --- 动态决定是否运行 patch_linux ---
 DO_PATCH_LINUX=false
 if [[ "$BRANCH_NAME" == "sukisuultra" ]]; then
-  if [[ "$PROJECT_KEY" == "s24_sm8650" || "$PROJECT_KEY" == "s25_sm8750" || "$PROJECT_KEY" == "tabs10_mt6989" ]]; then
+  if [[ "$PROJECT_KEY" == "s24_sm8650" || "$PROJECT_KEY" == "s25_sm8750" || "$PROJECT_KEY" == "s25e_sm8750" || "$PROJECT_KEY" == "tabs10_mt6989" ]]; then
     DO_PATCH_LINUX=true
   fi
 fi
