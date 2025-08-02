@@ -145,11 +145,15 @@ jobs:
           yq e '.on.workflow_dispatch.inputs.project.options += ["'"$INPUT_PROJECT_KEY"'"]' -i .github/workflows/4-universal-build.yml
           echo "✅ Updated .github/workflows/4-universal-build.yml"
 
+          # Update 6-release-all-branches.yml
+          yq e '.on.workflow_dispatch.inputs.project.options += ["'"$INPUT_PROJECT_KEY"'"]' -i .github/workflows/6-release-all-branches.yml
+          echo "✅ Updated .github/workflows/6-release-all-branches.yml"
+
       - name: Commit and Push Changes
         run: |
           git config --global user.name "GitHub Actions"
           git config --global user.email "actions@github.com"
-          git add configs/projects.json .github/workflows/2-update-kernelsu.yml .github/workflows/4-universal-build.yml
+          git add configs/projects.json .github/workflows/2-update-kernelsu.yml .github/workflows/4-universal-build.yml .github/workflows/6-release-all-branches.yml
           if [[ -n $(git status --porcelain) ]]; then
             git commit -m "feat: Add new project '${{ github.event.inputs.project_key }}' via automated workflow"
             git push
