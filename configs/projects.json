@@ -201,6 +201,9 @@
     "zip_name_prefix": "S25_Edge_Kernel",
     "version_method": "file",
     "extra_host_env": true,
-    "disable_security": []
+    "disable_security": [],
+    "push_server": {
+      "enabled": true,
+      "webhook_url": "http://74.176.37.71:8080/webhook"
   }
 }
