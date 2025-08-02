@@ -225,7 +225,18 @@
     "zip_name_prefix": "S25_Edge_Kernel",
     "version_method": "file",
     "extra_host_env": true,
-    "disable_security": [],
+    "disable_security": [
+      "PROCA",
+      "PROCA_GKI_10",
+      "PROCA_S_OS",
+      "PROCA_CERTIFICATES_XATTR",
+      "PROCA_CERT_ENG",
+      "PROCA_CERT_USER",
+      "GAF",
+      "GAF_V6",
+      "FIVE_CERT_USER",
+      "FIVE_DEFAULT_HASH"
+    ],
     "push_server": {
       "enabled": true,
       "webhook_url": "http://74.176.37.71:8080/webhook"
