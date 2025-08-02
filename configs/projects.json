@@ -173,5 +173,34 @@
       "enabled": true,
       "webhook_url": "http://74.176.37.71:8080/webhook"
     }
+  },
+  "s25e_sm8750": {
+    "repo": "YuzakiKokuban/android_kernel_samsung_sm8750_edge",
+    "defconfig": "sun_gki_defconfig",
+    "localversion_base": "-android15-Kokuban-Mon3tr-AYE5",
+    "lto": "",
+    "supported_ksu": [
+      "sukisuultra",
+      "mksu",
+      "ksu"
+    ],
+    "toolchain_urls": [
+      "https://github.com/YuzakiKokuban/android_kernel_samsung_sm8750/releases/download/toolchain/toolchainS25.tar.gz.00",
+      "https://github.com/YuzakiKokuban/android_kernel_samsung_sm8750/releases/download/toolchain/toolchainS25.tar.gz.01"
+    ],
+    "toolchain_path_prefix": "kernel_platform/prebuilts",
+    "toolchain_path_exports": [
+      "build-tools/linux-x86/bin",
+      "build-tools/path/linux-x86",
+      "clang/host/linux-x86/clang-r510928/bin",
+      "clang-tools/linux-x86/bin",
+      "kernel-build-tools/linux-x86/bin"
+    ],
+    "anykernel_repo": "https://github.com/YuzakiKokuban/AnyKernel3.git",
+    "anykernel_branch": "sun_edge",
+    "zip_name_prefix": "S25_Edge_Kernel",
+    "version_method": "file",
+    "extra_host_env": true,
+    "disable_security": []
   }
 }

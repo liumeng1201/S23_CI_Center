@@ -7,7 +7,7 @@ on:
         description: '选择要编译的内核项目'
         required: true
         type: choice
-        options: [s23_sm8550, s24_sm8650, s25_sm8750, tabs10_mt6989, tabs9_sm8550]
+        options: [s23_sm8550, s24_sm8650, s25_sm8750, tabs10_mt6989, tabs9_sm8550, s25e_sm8750]
       branch:
         description: '选择要编译的分支'
         required: true
@@ -26,7 +26,6 @@ on:
         default: true
   repository_dispatch:
     types: [build-kernel]
-
 jobs:
   # 此任务负责解析不同的触发类型，并为下一步准备统一的输入参数
   prepare-inputs:
@@ -51,7 +50,6 @@ jobs:
             echo "do_release=true" >> $GITHUB_OUTPUT
             echo "is_prerelease=true" >> $GITHUB_OUTPUT
           fi
-
   # 此任务调用可复用的构建工作流
   call-reusable-build:
     needs: prepare-inputs
