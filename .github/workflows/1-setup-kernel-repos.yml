@@ -5,7 +5,7 @@ on:
       commit_message:
         description: '请输入本次同步操作的 Commit 信息'
         required: true
-        default: 'ci: Sync central CI files and README'
+        default: 'ci: Sync central CI files, README and funding'
       readme_language:
         description: '选择生成的 README.md 语言'
         required: true
@@ -44,28 +44,20 @@ jobs:
 
             # --- Generate README.md dynamically from projects.json ---
             README_TEMPLATE=$(cat ${{ github.workspace }}/templates/README.md.tpl)
-            
-            # Directly get device names from project config
             DEVICE_NAME_CN=$(echo "$PROJECT_CONFIG" | jq -r '.readme_placeholders.DEVICE_NAME_CN // "未知设备"')
             DEVICE_NAME_EN=$(echo "$PROJECT_CONFIG" | jq -r '.readme_placeholders.DEVICE_NAME_EN // "Unknown Device"')
-            
-            # Replace placeholders
             README_CONTENT=${README_TEMPLATE//__DEVICE_NAME_CN__/$DEVICE_NAME_CN}
             README_CONTENT=${README_CONTENT//__DEVICE_NAME_EN__/$DEVICE_NAME_EN}
             README_CONTENT=${README_CONTENT//__PROJECT_REPO__/$PROJECT_REPO}
             README_CONTENT=${README_CONTENT//__LOCALVERSION_BASE__/$LOCALVERSION_BASE}
-            
-            # Handle language selection
             if [ "$README_LANG" == "zh-CN" ]; then
                 README_CONTENT=$(echo "$README_CONTENT" | sed '/<!-- BEGIN-EN -->/,/<!-- END-EN -->/d')
             elif [ "$README_LANG" == "en-US" ]; then
                 README_CONTENT=$(echo "$README_CONTENT" | sed '/<!-- BEGIN-ZH -->/,/<!-- END-ZH -->/d')
             fi
-            # Clean up markers for all cases
             README_CONTENT=$(echo "$README_CONTENT" | sed 's/<!-- BEGIN-.. -->//g' | sed 's/<!-- END-.. -->//g')
-            
             echo "Generated README.md for $project_key with language: $README_LANG"
-            
+
             # --- Sync CI Files to all target branches ---
             TARGET_BRANCHES=("main" "ksu" "mksu" "sukisuultra")
             REMOTE_BRANCHES=$(git branch -r | sed 's|origin/||' | grep -v 'HEAD ->')
@@ -73,8 +65,10 @@ jobs:
               if echo "$REMOTE_BRANCHES" | grep -q "^ *${branch}$"; then
                 echo "Configuring branch: $branch"
                 git checkout "$branch"
-                # Copy the generated README to the branch
+                # Copy the generated README and FUNDING file to the branch
                 echo "$README_CONTENT" > README.md
+                mkdir -p .github
+                cp ${{ github.workspace }}/.github/FUNDING.yml ./.github/FUNDING.yml
                 rm -rf .github/workflows build*.sh update-kernelsu.yml update.sh
                 mkdir -p .github/workflows
                 cp ${{ github.workspace }}/templates/trigger-central-build.yml.tpl .github/workflows/trigger-central-build.yml
@@ -93,29 +87,22 @@ jobs:
             git push --all
             cd ..
 
+            # --- Enable Sponsor Button for the repository ---
+            echo "Enabling sponsor button for $PROJECT_REPO"
+            gh api --method PATCH "repos/$PROJECT_REPO" -f has_sponsorships=true --silent || echo "Warning: Failed to enable sponsor button for $PROJECT_REPO. Please check token permissions."
+
             # --- Manage Webhook ---
             PUSH_SERVER_CONFIG_ENABLED=$(echo "$PROJECT_CONFIG" | jq -r '.push_server.enabled')
             if [ "$PUSH_SERVER_CONFIG_ENABLED" == "true" ]; then
               WEBHOOK_URL=$(echo "$PROJECT_CONFIG" | jq -r '.push_server.webhook_url')
               echo "Managing webhook for $PROJECT_REPO -> $WEBHOOK_URL"
-              
               EXISTING_HOOK_ID=$(gh api "repos/$PROJECT_REPO/hooks" --jq ".[] | select(.config.url == \"$WEBHOOK_URL\") | .id")
-
               if [ -n "$EXISTING_HOOK_ID" ]; then
                 echo "Webhook already exists. Updating it..."
-                gh api --method PATCH "repos/$PROJECT_REPO/hooks/$EXISTING_HOOK_ID" \
-                  -f 'events[]'='release' \
-                  -f "config[url]=$WEBHOOK_URL" \
-                  -f "config[content_type]=json" \
-                  -f "config[secret]=$WEBHOOK_SECRET" > /dev/null
+                gh api --method PATCH "repos/$PROJECT_REPO/hooks/$EXISTING_HOOK_ID" -f 'events[]'='release' -f "config[url]=$WEBHOOK_URL" -f "config[content_type]=json" -f "config[secret]=$WEBHOOK_SECRET" > /dev/null
               else
                 echo "Webhook does not exist. Creating a new one..."
-                gh api --method POST "repos/$PROJECT_REPO/hooks" \
-                  -f name='web' -F active=true \
-                  -f 'events[]'='release' \
-                  -f "config[url]=$WEBHOOK_URL" \
-                  -f "config[content_type]=json" \
-                  -f "config[secret]=$WEBHOOK_SECRET" > /dev/null
+                gh api --method POST "repos/$PROJECT_REPO/hooks" -f name='web' -F active=true -f 'events[]'='release' -f "config[url]=$WEBHOOK_URL" -f "config[content_type]=json" -f "config[secret]=$WEBHOOK_SECRET" > /dev/null
               fi
               echo "Webhook management complete."
             else
