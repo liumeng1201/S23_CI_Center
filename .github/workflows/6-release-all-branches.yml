@@ -7,8 +7,7 @@ on:
         description: '选择要一键发布所有分支的内核项目'
         required: true
         type: choice
-        options: [s23_sm8550, s24_sm8650, s25_sm8750, tabs10_mt6989, tabs9_sm8550, s25e_sm8750]
-
+        options: [s23_sm8550, s24_sm8650, s25_sm8750, tabs10_mt6989, tabs9_sm8550, s25e_sm8750, z4_sm8475]
 jobs:
   discover-branches:
     runs-on: ubuntu-latest
@@ -33,7 +32,6 @@ jobs:
             fi
           done
           echo "matrix=$(echo "$EXISTING_BRANCHES" | jq -c .)" >> $GITHUB_OUTPUT
-
   build-and-release:
     needs: discover-branches
     if: needs.discover-branches.outputs.matrix != '[]'
