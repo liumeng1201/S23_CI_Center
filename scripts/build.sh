@@ -67,7 +67,7 @@ fi
 # --- 核心编译参数 ---
 MAKE_ARGS="O=out ARCH=arm64 CC=clang LLVM=1 LLVM_IAS=1"
 # 【条件修复】仅为 Z4 项目明确指定 SUBARCH 和 CROSS_COMPILE
-if [[ "$ZIP_NAME_PREFIX" == "Z4_kernel" ]]; then
+if [[ "$ZIP_NAME_PREFIX" == "Z4_Kernel" ]]; then
     echo "--- Z4 project detected. Applying SUBARCH and CROSS_COMPILE flags. ---"
     MAKE_ARGS+=" SUBARCH=arm64 CROSS_COMPILE=aarch64-linux-gnu-"
 fi
