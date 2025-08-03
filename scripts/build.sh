@@ -7,7 +7,6 @@ LOCALVERSION_BASE="${PROJECT_LOCALVERSION_BASE:?PROJECT_LOCALVERSION_BASE 未设
 LTO="${PROJECT_LTO}"
 TOOLCHAIN_PATH_PREFIX="${PROJECT_TOOLCHAIN_PATH_PREFIX:?PROJECT_TOOLCHAIN_PATH_PREFIX 未设置}"
 TOOLCHAIN_PATH_EXPORTS_JSON="${PROJECT_TOOLCHAIN_PATH_EXPORTS:?PROJECT_TOOLCHAIN_PATH_EXPORTS 未设置}"
-# ANYKERNEL_REPO 和 ANYKERNEL_BRANCH 变量不再需要被此脚本直接使用
 ZIP_NAME_PREFIX="${PROJECT_ZIP_NAME_PREFIX:?PROJECT_ZIP_NAME_PREFIX 未设置}"
 GITHUB_REPO="${PROJECT_REPO:?PROJECT_REPO 未设置}"
 AUTO_RELEASE="${DO_RELEASE:?DO_RELEASE 未设置}"
@@ -19,7 +18,7 @@ DISABLE_SECURITY_JSON="${PROJECT_DISABLE_SECURITY:-[]}"
 # --- 动态决定是否运行 patch_linux ---
 DO_PATCH_LINUX=false
 if [[ "$BRANCH_NAME" == "sukisuultra" ]]; then
-  if [[ "$PROJECT_KEY" == "s24_sm8650" || "$PROJECT_KEY" == "s25_sm8750" || "$PROJECT_KEY" == "s25e_sm8750" || "$PROJECT_KEY" == "tabs10_mt6989" ]]; then
+  if [[ "$PROJECT_KEY" == "s24_sm8650" || "$PROJECT_KEY" == "s25_sm8750" || "$PROJECT_KEY" == "tabs10_mt6989" ]]; then
     DO_PATCH_LINUX=true
   fi
 fi
@@ -67,6 +66,11 @@ fi
 
 # --- 核心编译参数 ---
 MAKE_ARGS="O=out ARCH=arm64 CC=clang LLVM=1 LLVM_IAS=1"
+# 【条件修复】仅为 Z4 项目明确指定 SUBARCH 和 CROSS_COMPILE
+if [[ "$ZIP_NAME_PREFIX" == "Z4_kernel" ]]; then
+    echo "--- Z4 project detected. Applying SUBARCH and CROSS_COMPILE flags. ---"
+    MAKE_ARGS+=" SUBARCH=arm64 CROSS_COMPILE=aarch64-linux-gnu-"
+fi
 
 # 1. 清理 & 应用 defconfig
 rm -rf out
@@ -87,12 +91,13 @@ if [ -n "$LTO" ]; then ./scripts/config --file out/.config -e LTO_CLANG_${LTO^^}
 FINAL_LOCALVERSION="${LOCALVERSION_BASE}-${VERSION_SUFFIX}"
 if [ "$VERSION_METHOD" == "file" ]; then
     echo "${FINAL_LOCALVERSION}-g$(git rev-parse --short HEAD)" > ./localversion
-    MAKE_ARGS+=""
+    # 当使用文件方法时，不应将 LOCALVERSION 传递给 make
+    MAKE_ARGS_BUILD="${MAKE_ARGS}"
 else
-    MAKE_ARGS+=" LOCALVERSION=${FINAL_LOCALVERSION}"
+    MAKE_ARGS_BUILD="${MAKE_ARGS} LOCALVERSION=${FINAL_LOCALVERSION}"
 fi
 
-# 5. 【新增】设置构建时间戳
+# 5. 设置构建时间戳
 echo "--- 正在设置 KBUILD_BUILD_TIMESTAMP ---"
 export KBUILD_BUILD_TIMESTAMP=$(date -u +"%a %b %d %H:%M:%S %Z %Y")
 echo "Build timestamp set to: $KBUILD_BUILD_TIMESTAMP"
@@ -101,7 +106,7 @@ echo "Build timestamp set to: $KBUILD_BUILD_TIMESTAMP"
 echo "--- 开始编译内核 (-j$(nproc)) ---"
 if command -v ccache &> /dev/null; then export CCACHE_EXEC=$(which ccache); ccache -M 5G; export PATH="/usr/lib/ccache:$PATH"; fi
 ccache -s
-make -j$(nproc) ${MAKE_ARGS} 2>&1 | tee kernel_build_log.txt
+make -j$(nproc) ${MAKE_ARGS_BUILD} 2>&1 | tee kernel_build_log.txt
 BUILD_STATUS=${PIPESTATUS[0]}
 ccache -s
 if [ "$VERSION_METHOD" == "file" ]; then echo -n > ./localversion; fi
@@ -110,7 +115,6 @@ echo -e "\n--- 内核编译成功！ ---\n"
 
 # 7. 打包
 cd out
-# 修改：不再 clone，而是从工作流准备好的缓存目录复制
 echo "--- 从缓存目录复制 AnyKernel3 ---"
 cp -r ../../anykernel_repo ./AnyKernel3
 
@@ -135,4 +139,3 @@ PRERELEASE_FLAG=""
 if [ "$IS_PRERELEASE" == "true" ]; then PRERELEASE_FLAG="--prerelease"; RELEASE_TITLE="[预发布] ${RELEASE_TITLE}"; fi
 UPLOAD_FILE_PATH=$(realpath "out/${final_name}.zip")
 gh release create "$TAG" "$UPLOAD_FILE_PATH" --repo "$GITHUB_REPO" --title "$RELEASE_TITLE" --notes "$RELEASE_NOTES" --target "$BRANCH_NAME" $PRERELEASE_FLAG
-
