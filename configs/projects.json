@@ -276,5 +276,41 @@
       "enabled": true,
       "webhook_url": "http://74.176.37.71:8080/webhook"
     }
+  },
+  "z5_sm8550": {
+    "repo": "YuzakiKokuban/android_sansung_kernel_sm8550_Z5",
+    "defconfig": "kalama_gki_defconfig",
+    "localversion_base": "-android13-Kokuban-Mei-EYG7",
+    "lto": "thin",
+    "supported_ksu": [
+      "sukisuultra",
+      "mksu",
+      "ksu"
+    ],
+    "toolchain_urls": [
+      "https://github.com/YuzakiKokuban/android_kernel_samsung_sm8550_S23/releases/download/toolchain/toolchain_part_aa.tar.gz",
+      "https://github.com/YuzakiKokuban/android_kernel_samsung_sm8550_S23/releases/download/toolchain/toolchain_part_ab.tar.gz",
+      "https://github.com/YuzakiKokuban/android_kernel_samsung_sm8550_S23/releases/download/toolchain/toolchain_part_ac.tar.gz"
+    ],
+    "toolchain_path_prefix": "prebuilts",
+    "toolchain_path_exports": [
+      "build-tools/linux-x86/bin",
+      "build-tools/path/linux-x86",
+      "clang/host/linux-x86/clang-r450784e/bin"
+    ],
+    "anykernel_repo": "https://github.com/YuzakiKokuban/AnyKernel3.git",
+    "anykernel_branch": "kalama_z",
+    "zip_name_prefix": "Z5_Kernel",
+    "version_method": "param",
+    "extra_host_env": false,
+    "disable_security": [],
+    "readme_placeholders": {
+      "DEVICE_NAME_CN": "三星 Galaxy Z5 系列",
+      "DEVICE_NAME_EN": "Galaxy Z5 Series"
+    },
+    "push_server": {
+      "enabled": true,
+      "webhook_url": "http://74.176.37.71:8080/webhook"
+    }
   }
 }
