@@ -5,7 +5,7 @@ on:
       commit_message:
         description: '请输入本次同步操作的 Commit 信息'
         required: true
-        default: 'ci: Sync central CI files, README and funding'
+        default: '[skip ci] ci: Sync central CI files, README and funding'
       readme_language:
         description: '选择生成的 README.md 语言'
         required: true
