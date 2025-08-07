@@ -18,7 +18,7 @@ DISABLE_SECURITY_JSON="${PROJECT_DISABLE_SECURITY:-[]}"
 # --- 动态决定是否运行 patch_linux ---
 DO_PATCH_LINUX=false
 if [[ "$BRANCH_NAME" == "sukisuultra" ]]; then
-  if [[ "$PROJECT_KEY" == "s24_sm8650" || "$PROJECT_KEY" == "s25_sm8750" || "$PROJECT_KEY" == "tabs10_mt6989" ]]; then
+  if [[ "$PROJECT_KEY" == "s24_sm8650" || "$PROJECT_KEY" == "s25_sm8750" || "$PROJECT_KEY" == "tabs10_mt6989" || "$PROJECT_KEY" == "s25e_sm8750" ]]; then
     DO_PATCH_LINUX=true
   fi
 fi
@@ -84,8 +84,17 @@ for flag in $(echo "$DISABLE_SECURITY_JSON" | jq -r '.[]'); do
 done
 ./scripts/config --file out/.config $DISABLE_FLAGS
 
-# 3. 配置 LTO
-if [ -n "$LTO" ]; then ./scripts/config --file out/.config -e LTO_CLANG_${LTO^^} -d LTO_CLANG_THIN -d LTO_CLANG_FULL; fi
+# 3. 【逻辑修复】正确配置 LTO
+if [ "$LTO" = "thin" ]; then
+  echo "--- Enabling ThinLTO ---"
+  ./scripts/config --file out/.config -e LTO_CLANG_THIN -d LTO_CLANG_FULL
+elif [ "$LTO" = "full" ]; then
+  echo "--- Enabling FullLTO ---"
+  ./scripts/config --file out/.config -e LTO_CLANG_FULL -d LTO_CLANG_THIN
+else
+  echo "--- LTO not specified, disabling both ---"
+  ./scripts/config --file out/.config -d LTO_CLANG_THIN -d LTO_CLANG_FULL
+fi
 
 # 4. 设置版本号
 FINAL_LOCALVERSION="${LOCALVERSION_BASE}-${VERSION_SUFFIX}"
