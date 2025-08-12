@@ -65,11 +65,17 @@ if [ "$EXTRA_HOST_ENV" == "true" ]; then
 fi
 
 # --- 核心编译参数 ---
-MAKE_ARGS="O=out ARCH=arm64 CC=clang LLVM=1 LLVM_IAS=1"
+# 【关键修复】从 PROJECT_KEY (例如 "S24fe_s5e9945") 中提取 SOC 名称 ("s5e9945")
+TARGET_SOC_NAME=$(echo "$PROJECT_KEY" | cut -d'_' -f2)
+echo "--- 自动检测到 TARGET_SOC 为: ${TARGET_SOC_NAME} ---"
+
+# 将 TARGET_SOC=${TARGET_SOC_NAME} 添加到 MAKE_ARGS 中
+MAKE_ARGS="O=out ARCH=arm64 CC=clang LLVM=1 LLVM_IAS=1 TARGET_SOC=${TARGET_SOC_NAME}"
+
 # 【条件修复】仅为 Z4 项目明确指定 SUBARCH 和 CROSS_COMPILE
 if [[ "$ZIP_NAME_PREFIX" == "Z4_Kernel" ]]; then
-    echo "--- Z4 project detected. Applying SUBARCH and CROSS_COMPILE flags. ---"
-    MAKE_ARGS+=" SUBARCH=arm64 CROSS_COMPILE=aarch64-linux-gnu-"
+  echo "--- Z4 project detected. Applying SUBARCH and CROSS_COMPILE flags. ---"
+  MAKE_ARGS+=" SUBARCH=arm64 CROSS_COMPILE=aarch64-linux-gnu-"
 fi
 
 # 1. 清理 & 应用 defconfig
