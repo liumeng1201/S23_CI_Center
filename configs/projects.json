@@ -316,7 +316,7 @@
   "s24fe_s5e9945": {
     "repo": "YuzakiKokuban/android_kernel_samsung_s5e9945",
     "defconfig": "s5e9945_gki_defconfig",
-    "localversion_base": "android14-Kokuban-Haruka-BYF5",
+    "localversion_base": "-android14-Kokuban-Haruka-BYF5",
     "lto": "",
     "supported_ksu": [
       "sukisuultra",
