@@ -313,7 +313,7 @@
       "webhook_url": "http://74.176.37.71:8080/webhook"
     }
   },
-  "S24fe_s5e9945": {
+  "s24fe_s5e9945": {
     "repo": "YuzakiKokuban/android_kernel_samsung_s5e9945",
     "defconfig": "s5e9945_gki_defconfig",
     "localversion_base": "android14-Kokuban-Haruka-BYF5",
@@ -337,7 +337,7 @@
     ],
     "anykernel_repo": "https://github.com/YuzakiKokuban/AnyKernel3.git",
     "anykernel_branch": "s5e9945",
-    "zip_name_prefix": "s24FE_Kernel",
+    "zip_name_prefix": "S24FE_Kernel",
     "version_method": "param",
     "extra_host_env": false,
     "disable_security": [
