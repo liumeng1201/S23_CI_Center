@@ -246,7 +246,7 @@
     "repo": "YuzakiKokuban/android_kernel_samsung_sm8475",
     "defconfig": "taro_gki_defconfig",
     "localversion_base": "-android12-Kokuban-Bronya-HYDB",
-    "lto": "full",
+    "lto": "thin",
     "supported_ksu": [
       "sukisuultra",
       "mksu",
