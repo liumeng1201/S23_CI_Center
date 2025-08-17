@@ -367,12 +367,10 @@
     "localversion_base": "-nongki-Kokuban-Wisadel",
     "lto": "thin",
     "supported_ksu": [
-      "sukisuultra",
-      "mksu",
-      "ksu"
+      "sukisuultra"
     ],
     "toolchain_urls": [
-      "https://github.com/YuzakiKokuban/android_kernel_samsung_sm8350_Z3/releases/download/toolchain/toolchain.tar.gz"
+      "https://github.com/YuzakiKokuban/android_kernel_samsung_sm8475/releases/download/toolchain/toolchain.tar.gz"
     ],
     "toolchain_path_prefix": "prebuilts",
     "toolchain_path_exports": [
