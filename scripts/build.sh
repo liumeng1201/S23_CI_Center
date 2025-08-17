@@ -84,7 +84,6 @@ if [[ "$ZIP_NAME_PREFIX" == "Z3_Kernel" ]]; then
   BUILD_CROSS_COMPILE=$TOOLCHAIN_BASE_PATH/gcc/linux-x86/host/x86_64-linux-glibc2.17-4.8/x86_64-linux/bin
   CLANG_TRIPLE=aarch64-linux-gnu-
   MAKE_ARGS+=" SUBARCH=arm64 CROSS_COMPILE=aarch64-linux-gnu- REAL_CC=$KERNEL_LLVM_BIN CLANG_TRIPLE=$CLANG_TRIPLE CONFIG_SECTION_MISMATCH_WARN_ONLY=y "
-  MAKE_ARGS-=" CC=clang LLVM=1 LLVM_IAS=1 "
 fi
 
 # 1. 清理 & 应用 defconfig
