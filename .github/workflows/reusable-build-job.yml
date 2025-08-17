@@ -34,7 +34,7 @@ jobs:
         run: |
           sudo apt-get update
           # --- FIX: Added lld package to ensure the linker is available ---
-          sudo apt-get install -y build-essential git libncurses5-dev bc bison flex libssl-dev p7zip-full lz4 cpio curl libelf-dev dwarves ccache jq lld gcc-multilib
+          sudo apt-get install -y build-essential git libncurses5-dev bc bison flex libssl-dev p7zip-full lz4 cpio curl libelf-dev dwarves ccache jq lld gcc-multilib distcc icecc
       
       - name: Parse Project Configuration
         id: config
