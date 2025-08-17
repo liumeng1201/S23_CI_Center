@@ -384,7 +384,18 @@
     "zip_name_prefix": "Z3_Kernel",
     "version_method": "param",
     "extra_host_env": false,
-    "disable_security": [],
+    "disable_security": [
+      "PROCA",
+      "PROCA_GKI_10",
+      "PROCA_S_OS",
+      "PROCA_CERTIFICATES_XATTR",
+      "PROCA_CERT_ENG",
+      "PROCA_CERT_USER",
+      "GAF",
+      "GAF_V6",
+      "FIVE_CERT_USER",
+      "FIVE_DEFAULT_HASH"
+    ],
     "readme_placeholders": {
       "DEVICE_NAME_CN": "三星Galaxy Z3 系列",
       "DEVICE_NAME_EN": "Samsung Galaxy Z3 Series"
