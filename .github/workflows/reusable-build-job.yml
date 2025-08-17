@@ -121,7 +121,13 @@ jobs:
         working-directory: ./kernel_source
         run: |
           if [[ "${{ env.BRANCH_NAME }}" == "sukisuultra" ]]; then
-            curl -LSs "https://raw.githubusercontent.com/SukiSU-Ultra/SukiSU-Ultra/main/kernel/setup.sh" | bash -s susfs-main
+            if [[ "${{ env.PROJECT_KEY }}" == "z3_sm8350" ]]; then
+              echo "--- Detected z3_sm8350 on sukisuultra branch, using SukiSU fork with version susfs-1.5.7 ---"
+              curl -LSs "https://raw.githubusercontent.com/Prslc/SukiSU-Ultra/main/kernel/setup.sh" | bash -s susfs-1.5.7
+            else
+              echo "--- Using standard SukiSU-Ultra setup ---"
+              curl -LSs "https://raw.githubusercontent.com/SukiSU-Ultra/SukiSU-Ultra/main/kernel/setup.sh" | bash -s susfs-main
+            fi
           elif [[ "${{ env.BRANCH_NAME }}" == "mksu" ]]; then
             curl -LSs "https://raw.githubusercontent.com/5ec1cff/KernelSU/main/kernel/setup.sh" | bash -
           elif [[ "${{ env.BRANCH_NAME }}" == "ksu" ]]; then

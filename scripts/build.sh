@@ -78,6 +78,11 @@ if [[ "$ZIP_NAME_PREFIX" == "Z4_Kernel" ]]; then
   MAKE_ARGS+=" SUBARCH=arm64 CROSS_COMPILE=aarch64-linux-gnu-"
 fi
 
+if [[ "$ZIP_NAME_PREFIX" == "Z3_Kernel" ]]; then
+  echo "--- Z4 project detected. Applying SUBARCH and CROSS_COMPILE flags. ---"
+  MAKE_ARGS+=" SUBARCH=arm64 CROSS_COMPILE=aarch64-linux-gnu-"
+fi
+
 # 1. 清理 & 应用 defconfig
 rm -rf out
 make ${MAKE_ARGS} $MAIN_DEFCONFIG
