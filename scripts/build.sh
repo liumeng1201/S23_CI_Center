@@ -79,8 +79,10 @@ if [[ "$ZIP_NAME_PREFIX" == "Z4_Kernel" ]]; then
 fi
 
 if [[ "$ZIP_NAME_PREFIX" == "Z3_Kernel" ]]; then
-  echo "--- Z4 project detected. Applying SUBARCH and CROSS_COMPILE flags. ---"
-  MAKE_ARGS+=" SUBARCH=arm64 CROSS_COMPILE=aarch64-linux-gnu-"
+  echo "--- Z3 project detected. Applying SUBARCH and CROSS_COMPILE flags. ---"
+  KERNEL_LLVM_BIN=$TOOLCHAIN_BASE_PATH/clang/host/linux-x86/clang-r416183b/bin
+  BUILD_CROSS_COMPILE=$TOOLCHAIN_BASE_PATH/gcc/linux-x86/host/bin/aarch64-linux-android
+  MAKE_ARGS+=" ARCH=arm64 CROSS_COMPILE=$BUILD_CROSS_COMPILE REAL_CC=$KERNEL_LLVM_BIN CLANG_TRIPLE=$CLANG_TRIPLE CONFIG_SECTION_MISMATCH_WARN_ONLY=y "
 fi
 
 # 1. 清理 & 应用 defconfig

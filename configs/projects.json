@@ -377,7 +377,7 @@
     "toolchain_path_prefix": "prebuilts",
     "toolchain_path_exports": [
       "clang/host/linux-x86/clang-r416183b/bin",
-      "gcc/linux-x86/host/x86_64-linux-glibc2.17-4.8/bin"
+      "gcc/linux-x86/host/bin"
     ],
     "anykernel_repo": "https://github.com/YuzakiKokuban/AnyKernel3.git",
     "anykernel_branch": "Lahaina",
