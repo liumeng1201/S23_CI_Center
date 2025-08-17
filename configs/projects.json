@@ -360,5 +360,38 @@
       "enabled": true,
       "webhook_url": "http://74.176.37.71:8080/webhook"
     }
+  },
+  "z3_sm8350": {
+    "repo": "YuzakiKokuban/android_kernel_samsung_sm8350_Z3",
+    "defconfig": "q2q_defconfig",
+    "localversion_base": "-nongki-Kokuban-Wisadel",
+    "lto": "thin",
+    "supported_ksu": [
+      "sukisuultra",
+      "mksu",
+      "ksu"
+    ],
+    "toolchain_urls": [
+      "https://github.com/YuzakiKokuban/android_kernel_samsung_sm8350_Z3/releases/download/toolchain/toolchain.tar.gz"
+    ],
+    "toolchain_path_prefix": "prebuilts",
+    "toolchain_path_exports": [
+      "clang/host/linux-x86/clang-r416183b/bin",
+      "gcc/linux-x86/host/x86_64-linux-glibc2.17-4.8/bin"
+    ],
+    "anykernel_repo": "https://github.com/YuzakiKokuban/AnyKernel3.git",
+    "anykernel_branch": "Lahaina",
+    "zip_name_prefix": "Z3_Kernel",
+    "version_method": "param",
+    "extra_host_env": false,
+    "disable_security": [],
+    "readme_placeholders": {
+      "DEVICE_NAME_CN": "三星Galaxy Z3 系列",
+      "DEVICE_NAME_EN": "Samsung Galaxy Z3 Series"
+    },
+    "push_server": {
+      "enabled": true,
+      "webhook_url": "http://74.176.37.71:8080/webhook"
+    }
   }
 }
