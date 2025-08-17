@@ -370,12 +370,12 @@
       "sukisuultra"
     ],
     "toolchain_urls": [
-      "https://github.com/YuzakiKokuban/android_kernel_samsung_sm8350_Z3/releases/download/toolchain/toolchain.tar.gz"
+      "https://github.com/YuzakiKokuban/android_kernel_samsung_sm8475/releases/download/toolchain/toolchain.tar.gz"
     ],
     "toolchain_path_prefix": "prebuilts",
     "toolchain_path_exports": [
       "clang/host/linux-x86/clang-r416183b/bin",
-      "gcc/linux-x86/host/bin",
+      "gcc/linux-x86/host/x86_64-linux-glibc2.17-4.8/bin",
       "build-tools/linux-x86/bin",
       "build-tools/path/linux-x86"
     ],
