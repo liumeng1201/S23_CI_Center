@@ -364,7 +364,7 @@
   "z3_sm8350": {
     "repo": "YuzakiKokuban/android_kernel_samsung_sm8350_Z3",
     "defconfig": "q2q_defconfig",
-    "localversion_base": "-Kokuban-Wisadel",
+    "localversion_base": "-Kokuban-Wisadel-JYD9",
     "lto": "thin",
     "supported_ksu": [
       "sukisuultra"
