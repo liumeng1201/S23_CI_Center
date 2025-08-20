@@ -17,7 +17,7 @@ SUPPORTED_KSU_BRANCHES_JSON="${PROJECT_SUPPORTED_KSU:?PROJECT_SUPPORTED_KSU is n
 PROJECT_KEY="${PROJECT_KEY:?PROJECT_KEY is not set}"
 
 # --- Script start ---
-# FIX: The script's working directory is kernel_repo, so toolchain is one level up.
+# The script's working directory is 'kernel_repo'. All paths will be relative to this.
 TOOLCHAIN_BASE_PATH=$(realpath "../toolchain/${TOOLCHAIN_PATH_PREFIX}")
 
 # --- Setup Toolchain Environment ---
@@ -39,7 +39,6 @@ fi
 # --- Core Compilation Arguments ---
 TARGET_SOC_NAME=$(echo "$PROJECT_KEY" | cut -d'_' -f2)
 MAKE_ARGS="O=out ARCH=arm64 CC=clang LLVM=1 LLVM_IAS=1"
-# Add ccache to MAKE_ARGS
 MAKE_ARGS="CCACHE=ccache ${MAKE_ARGS} TARGET_SOC=${TARGET_SOC_NAME}"
 if [[ "$ZIP_NAME_PREFIX" == "Z4_Kernel" ]]; then MAKE_ARGS+=" SUBARCH=arm64 CROSS_COMPILE=aarch64-linux-gnu-"; fi
 if [[ "$ZIP_NAME_PREFIX" == "Z3_Kernel" ]]; then KERNEL_LLVM_BIN=$TOOLCHAIN_BASE_PATH/clang/host/linux-x86/clang-r416183b/bin; BUILD_CROSS_COMPILE=$TOOLCHAIN_BASE_PATH/gcc/linux-x86/host/x86_64-linux-glibc2.17-4.8/x86_64-linux/bin; CLANG_TRIPLE=aarch64-linux-gnu-; MAKE_ARGS+=" SUBARCH=arm64 CROSS_COMPILE=aarch64-linux-gnu- REAL_CC=$KERNEL_LLVM_BIN CLANG_TRIPLE=$CLANG_TRIPLE CONFIG_SECTION_MISMATCH_WARN_ONLY=y "; fi
@@ -50,6 +49,26 @@ compile_kernel_for_branch() {
     local version_suffix=$2
     echo -e "\n\n--- Starting compilation for branch: $branch_name ($version_suffix) ---"
     git checkout "$branch_name" && git pull
+
+    # --- NEW: Setup KernelSU based on branch ---
+    echo "--- Setting up KernelSU for branch: $branch_name ---"
+    if [[ "$branch_name" == "sukisuultra" ]]; then
+      if [[ "$PROJECT_KEY" == "z3_sm8350" ]]; then
+        echo "--- Detected z3_sm8350 on sukisuultra branch, using SukiSU fork with version susfs-1.5.7 ---"
+        curl -LSs "https://raw.githubusercontent.com/Prslc/SukiSU-Ultra/main/kernel/setup.sh" | bash -s susfs-1.5.7
+      else
+        echo "--- Using standard SukiSU-Ultra setup ---"
+        curl -LSs "https://raw.githubusercontent.com/SukiSU-Ultra/SukiSU-Ultra/main/kernel/setup.sh" | bash -s susfs-main
+      fi
+    elif [[ "$branch_name" == "mksu" ]]; then
+      curl -LSs "https://raw.githubusercontent.com/5ec1cff/KernelSU/main/kernel/setup.sh" | bash -
+    elif [[ "$branch_name" == "ksu" ]]; then
+      curl -LSs "https://raw.githubusercontent.com/tiann/KernelSU/main/kernel/setup.sh" | bash -
+    else
+      echo "--- Branch is '$branch_name', skipping KernelSU setup. ---"
+    fi
+    # --- END KernelSU Setup ---
+
     rm -rf out
     make ${MAKE_ARGS} "$MAIN_DEFCONFIG"
     
@@ -67,7 +86,6 @@ compile_kernel_for_branch() {
     if [ ${PIPESTATUS[0]} -ne 0 ]; then echo "--- Kernel compilation failed for $version_suffix! ---"; exit 1; fi
     echo -e "\n--- Kernel compilation successful for $version_suffix! ---\n"
 
-    # --- Handle patch_linux for SukiSU-Ultra ---
     local DO_PATCH_LINUX=false
     if [[ "$branch_name" == "sukisuultra" ]]; then
         if [[ "$PROJECT_KEY" == "s24_sm8650" || "$PROJECT_KEY" == "s25_sm8750" || "$PROJECT_KEY" == "tabs10_mt6989" || "$PROJECT_KEY" == "s25e_sm8750" || "$PROJECT_KEY" == "s24fe_s5e9945" ]]; then
@@ -78,18 +96,14 @@ compile_kernel_for_branch() {
     if [[ "$DO_PATCH_LINUX" == "true" ]]; then
         echo "--- Applying SukiSU-Ultra specific patch_linux for ${PROJECT_KEY} ---"
         cp ../anykernel_patcher_repo/patch_linux ./out/arch/arm64/boot/
-        cd ./out/arch/arm64/boot/
-        chmod +x ./patch_linux && ./patch_linux && mv -f oImage Image
-        cd - > /dev/null
+        (cd ./out/arch/arm64/boot/ && chmod +x ./patch_linux && ./patch_linux && mv -f oImage Image)
         echo "--- patch_linux applied successfully. ---"
     fi
-    # --- END patch_linux handling ---
 
     cp out/arch/arm64/boot/Image "../Image_${version_suffix}"
 }
 
 # --- Main Logic ---
-# 1. Determine base kernel and compile it
 BASE_BRANCH=""
 BASE_SUFFIX=""
 OTHER_BRANCHES=()
@@ -110,43 +124,37 @@ else
 fi
 
 compile_kernel_for_branch "$BASE_BRANCH" "$BASE_SUFFIX"
-# FIX: Use correct path to the compiled image in the parent directory
 mv "../Image_${BASE_SUFFIX}" "../Image_Base"
 
-# 2. Compile other variants for patching
 for branch in "${OTHER_BRANCHES[@]}"; do
     suffix=$(echo "$branch" | tr '[:lower:]' '[:upper:]' | sed 's/SUKI SUULTRA/SukiSUU/')
     compile_kernel_for_branch "$branch" "$suffix"
 done
 
-# 3. Create differential patches
 echo "--- Creating bsdiff patches ---"
 pip install bsdiff4
 mkdir -p ../patches
 for branch in "${OTHER_BRANCHES[@]}"; do
     suffix=$(echo "$branch" | tr '[:lower:]' '[:upper:]' | sed 's/SUKI SUULTRA/SukiSUU/')
     echo "Creating patch for $suffix..."
-    # FIX: Use correct paths for all files, which are in the parent directory
     python3 ../central_repo/scripts/bsdiff4_create.py "../Image_Base" "../Image_${suffix}" "../patches/${branch}.p"
 done
 echo "--- Patches created successfully ---"
 
-# 4. Package the AnyKernel3 zip
 echo "--- Preparing AnyKernel3 Patcher package ---"
 mv ../Image_Base ../anykernel_patcher_repo/Image
 echo "$BASE_SUFFIX" > ../anykernel_patcher_repo/base_kernel_name
 if [ ${#OTHER_BRANCHES[@]} -gt 0 ]; then
     mv ../patches/* ../anykernel_patcher_repo/bs_patches/
 fi
-cd ../anykernel_patcher_repo
 
+cd ../anykernel_patcher_repo
 kernel_release=$(grep -oP 'UTS_RELEASE "\K[^"]+' ../kernel_repo/out/include/generated/compile.h)
 final_name="${ZIP_NAME_PREFIX}_${kernel_release}_Weekly-Patch-Kit_$(TZ='Asia/Hong_Kong' date '+%Y%m%d')"
 zip -r9 "../${final_name}.zip" . -x "*.zip" README.md LICENSE '.*' '*/.*'
 cd ..
 UPLOAD_FILE_PATH=$(realpath "${final_name}.zip")
 
-# 5. Create GitHub Release
 echo -e "\n--- Publishing to GitHub Release ---"
 TAG="weekly-release-$(TZ='Asia/Hong_Kong' date +%Y%m%d-%H%M)"
 RELEASE_TITLE="周常更新 - ${kernel_release} (多合一差分包 | $(TZ='Asia/Hong_Kong' date +'%Y-%m-%d'))"
