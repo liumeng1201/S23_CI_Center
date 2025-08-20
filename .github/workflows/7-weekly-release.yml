@@ -85,7 +85,7 @@ jobs:
           cat * | tar -zxf - -i
 
       - name: Install Dependencies
-        run: sudo apt-get update && sudo apt-get install -y libtinfo5
+        run: sudo apt-get update && sudo apt-get install -y ibncurses5-dev bc bison flex libssl-dev p7zip-full lz4 cpio curl libelf-dev dwarves ccache jq lld
 
       - name: Run Weekly Build Script
         env:
