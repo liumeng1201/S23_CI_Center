@@ -3,9 +3,22 @@ on:
   workflow_dispatch:
     inputs:
       project_key:
-        description: 'Project Key to build (e.g., s23_sm8550). Leave empty to build all.'
-        required: false
-        default: ''
+        description: 'Project to build'
+        required: true
+        default: 'all'
+        type: choice
+        options:
+          - all
+          - s23_sm8550
+          - s24_sm8650
+          - s24fe_s5e9945
+          - s25_sm8750
+          - s25e_sm8750
+          - tabs10_mt6989
+          - tabs9_sm8550
+          - z3_sm8350
+          - z4_sm8475
+          - z5_sm8550
   schedule:
     - cron: '0 16 * * 0'
 
@@ -25,9 +38,11 @@ jobs:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           PROJECT_KEYS_INPUT="${{ github.event.inputs.project_key }}"
-          if [ -z "$PROJECT_KEYS_INPUT" ]; then
+          if [ "$PROJECT_KEYS_INPUT" == "all" ]; then
+            # Scheduled run or manual "all": get all project keys
             PROJECT_KEYS=$(jq -r 'keys | .[]' configs/projects.json)
           else
+            # Manual run for a single project
             PROJECT_KEYS=$PROJECT_KEYS_INPUT
           fi
 
@@ -55,12 +70,18 @@ jobs:
             done
 
             BASE_SUFFIX=$(echo "$BASE_BRANCH" | tr '[:lower:]' '[:upper:]' | sed 's/SUKI SUULTRA/SukiSUU/' | sed 's/MAIN/LKM/')
-            PACKAGE_INFO=$(jq -cn --arg pk "$PK" --argjson cfg "$PROJECT_CONFIG" --arg bb "$BASE_BRANCH" --arg bs "$BASE_SUFFIX" \
+            # For multi-project runs, this will be overwritten. We need to handle this differently.
+            # Let's create a map of package info.
+            PACKAGE_INFO_JSON=$(jq -cn --arg pk "$PK" --argjson cfg "$PROJECT_CONFIG" --arg bb "$BASE_BRANCH" --arg bs "$BASE_SUFFIX" \
               '{ "project_key": $pk, "config": $cfg, "base_branch": $bb, "base_suffix": $bs }')
+            
+            # For now, we only support single package info for manual runs.
+            if [ "$PROJECT_KEYS_INPUT" != "all" ]; then
+              echo "package_info=$(echo "$PACKAGE_INFO_JSON" | jq -c .)" >> $GITHUB_OUTPUT
+            fi
           done
           
           echo "matrix=$(echo "$FINAL_MATRIX" | jq -c .)" >> $GITHUB_OUTPUT
-          echo "package_info=$(echo "$PACKAGE_INFO" | jq -c .)" >> $GITHUB_OUTPUT
 
 
   # Job 2: Build all branches in parallel based on the matrix
@@ -140,6 +161,7 @@ jobs:
 
   # Job 3: Package everything and create the release
   package-and-release:
+    if: github.event_name == 'workflow_dispatch' && github.event.inputs.project_key != 'all'
     needs: [prepare-matrix, build]
     runs-on: ubuntu-latest
     steps:
@@ -162,7 +184,7 @@ jobs:
       - name: Download all compiled images
         uses: actions/download-artifact@v4
         with:
-          name: compiled-images-${{ needs.prepare-matrix.outputs.project_key }}
+          name: compiled-images-${{ fromJson(needs.prepare-matrix.outputs.package_info).project_key }}
           path: compiled-images
       - name: Create Patches and Package
         id: package
