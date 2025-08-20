@@ -1,0 +1,99 @@
+name: 7. Weekly Differential Release
+on:
+  # Allows manual triggering from the Actions tab
+  workflow_dispatch:
+    inputs:
+      project_key:
+        description: 'Project Key to build (e.g., s23_sm8550). Leave empty to build all.'
+        required: false
+        default: ''
+  # Runs at 16:00 UTC every Sunday (which is 00:00 HKT on Monday)
+  schedule:
+    - cron: '0 16 * * 0'
+
+jobs:
+  prepare-matrix:
+    runs-on: ubuntu-latest
+    outputs:
+      matrix: ${{ steps.set-matrix.outputs.matrix }}
+    steps:
+      - name: Checkout Central Repo
+        uses: actions/checkout@v4
+      - name: Set up matrix
+        id: set-matrix
+        run: |
+          if [ -n "${{ github.event.inputs.project_key }}" ]; then
+            # Manual trigger for a single project
+            JSON_MATRIX=$(jq -c --arg PK "${{ github.event.inputs.project_key }}" '[.[$PK] | {key: $PK, config: .}]' configs/projects.json)
+          else
+            # Scheduled trigger for all projects
+            JSON_MATRIX=$(jq -c '[to_entries[] | {key: .key, config: .value}]' configs/projects.json)
+          fi
+          echo "matrix=${JSON_MATRIX}" >> $GITHUB_OUTPUT
+
+  build-and-release:
+    needs: prepare-matrix
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        project: ${{ fromJson(needs.prepare-matrix.outputs.matrix) }}
+    
+    steps:
+      - name: Checkout Central Repo
+        uses: actions/checkout@v4
+        with:
+          path: central_repo
+
+      - name: Checkout Kernel Source Repo
+        uses: actions/checkout@v4
+        with:
+          repository: ${{ matrix.project.config.repo }}
+          path: kernel_repo
+
+      - name: Checkout AnyKernel3 Patcher Branch
+        uses: actions/checkout@v4
+        with:
+          repository: ${{ matrix.project.config.anykernel_repo }}
+          # Dynamically create branch name, e.g., "sun" becomes "sun-patcher"
+          ref: ${{ matrix.project.config.anykernel_branch }}-patcher
+          path: anykernel_patcher_repo
+
+      - name: Setup ccache
+        uses: hendrikmuhs/ccache-action@v1.2
+        with:
+          key: ccache-${{ matrix.project.key }}
+          max-size: 5G
+
+      - name: Download and Extract Toolchain
+        run: |
+          mkdir -p toolchain
+          cd toolchain
+          for url in $(echo '${{ toJSON(matrix.project.config.toolchain_urls) }}' | jq -r '.[]'); do
+            wget -q "$url"
+          done
+          echo "Combining and extracting toolchain..."
+          cat * | tar -zxf - -i
+
+      - name: Install Dependencies
+        run: sudo apt-get update && sudo apt-get install -y libtinfo5
+
+      - name: Run Weekly Build Script
+        env:
+          # Pass all project configs as environment variables
+          PROJECT_KEY: ${{ matrix.project.key }}
+          PROJECT_DEFCONFIG: ${{ matrix.project.config.defconfig }}
+          PROJECT_LOCALVERSION_BASE: ${{ matrix.project.config.localversion_base }}
+          PROJECT_LTO: ${{ matrix.project.config.lto }}
+          PROJECT_TOOLCHAIN_PATH_PREFIX: ${{ matrix.project.config.toolchain_path_prefix }}
+          PROJECT_TOOLCHAIN_PATH_EXPORTS: ${{ toJSON(matrix.project.config.toolchain_path_exports) }}
+          PROJECT_ZIP_NAME_PREFIX: ${{ matrix.project.config.zip_name_prefix }}
+          PROJECT_REPO: ${{ matrix.project.config.repo }}
+          PROJECT_VERSION_METHOD: ${{ matrix.project.config.version_method }}
+          PROJECT_EXTRA_HOST_ENV: ${{ matrix.project.config.extra_host_env }}
+          PROJECT_DISABLE_SECURITY: ${{ toJSON(matrix.project.config.disable_security) }}
+          PROJECT_SUPPORTED_KSU: ${{ toJSON(matrix.project.config.supported_ksu) }}
+          GH_TOKEN: ${{ secrets.GH_TOKEN }} # Use the same token for release
+        run: |
+          cd kernel_repo
+          ../central_repo/scripts/build_weekly.sh
