@@ -22,20 +22,15 @@ jobs:
       - name: Set up matrix
         id: set-matrix
         env:
-          # Use a token with repo access to query branch info from private repos
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          # Determine which projects to process
           PROJECT_KEYS_INPUT="${{ github.event.inputs.project_key }}"
           if [ -z "$PROJECT_KEYS_INPUT" ]; then
-            # Scheduled run: get all project keys
             PROJECT_KEYS=$(jq -r 'keys | .[]' configs/projects.json)
           else
-            # Manual run: use the specified project key
             PROJECT_KEYS=$PROJECT_KEYS_INPUT
           fi
 
-          # --- Build the full matrix for all projects and branches ---
           FINAL_MATRIX="[]"
           
           for PK in $PROJECT_KEYS; do
@@ -43,7 +38,6 @@ jobs:
             SUPPORTED_KSU=$(echo "$PROJECT_CONFIG" | jq -r '.supported_ksu | .[]')
             REPO_NAME=$(echo "$PROJECT_CONFIG" | jq -r '.repo')
 
-            # Check if 'main' branch exists to determine the base
             if git ls-remote --exit-code --heads "https://x-access-token:${GH_TOKEN}@github.com/${REPO_NAME}" main >/dev/null 2>&1; then
               BASE_BRANCH="main"
               ALL_BRANCHES="main $SUPPORTED_KSU"
@@ -52,28 +46,20 @@ jobs:
               ALL_BRANCHES="$SUPPORTED_KSU"
             fi
 
-            # Create a matrix entry for each branch of the current project
             for BRANCH in $ALL_BRANCHES; do
               SUFFIX_RAW=$(echo "$BRANCH" | tr '[:lower:]' '[:upper:]')
               SUFFIX=$(echo "$SUFFIX_RAW" | sed 's/SUKI SUULTRA/SukiSUU/' | sed 's/MAIN/LKM/')
-              
-              # Add a complete job description to the final matrix
               JOB_JSON=$(jq -cn --arg pk "$PK" --arg b "$BRANCH" --arg s "$SUFFIX" --argjson cfg "$PROJECT_CONFIG" \
                 '{ "project_key": $pk, "branch": $b, "suffix": $s, "config": $cfg }')
-              
               FINAL_MATRIX=$(echo "$FINAL_MATRIX" | jq -c ". + [$JOB_JSON]")
             done
 
-            # Store packaging info for the last job (one per project)
             BASE_SUFFIX=$(echo "$BASE_BRANCH" | tr '[:lower:]' '[:upper:]' | sed 's/SUKI SUULTRA/SukiSUU/' | sed 's/MAIN/LKM/')
             PACKAGE_INFO=$(jq -cn --arg pk "$PK" --argjson cfg "$PROJECT_CONFIG" --arg bb "$BASE_BRANCH" --arg bs "$BASE_SUFFIX" \
               '{ "project_key": $pk, "config": $cfg, "base_branch": $bb, "base_suffix": $bs }')
           done
           
           echo "matrix=$(echo "$FINAL_MATRIX" | jq -c .)" >> $GITHUB_OUTPUT
-          # Note: package_info will only contain data for the last project in a multi-project run.
-          # This is OK for manual single-project runs. Scheduled runs will need adjustment if they package all at once.
-          # For simplicity, we'll let each project have its own package-and-release job.
           echo "package_info=$(echo "$PACKAGE_INFO" | jq -c .)" >> $GITHUB_OUTPUT
 
 
@@ -97,19 +83,31 @@ jobs:
           repository: ${{ matrix.task.config.repo }}
           ref: ${{ matrix.task.branch }}
           path: kernel_repo
-      - name: Setup ccache
-        uses: hendrikmuhs/ccache-action@v1.2
+
+      - name: Cache Toolchain
+        id: cache-toolchain
+        uses: actions/cache@v4
         with:
-          key: ccache-${{ matrix.task.project_key }}-${{ matrix.task.branch }}
-          max-size: 2G
+          path: toolchain
+          key: Linux-toolchain-${{ matrix.task.project_key }}-${{ hashFiles('central_repo/configs/projects.json') }}
+
       - name: Download and Extract Toolchain
+        if: steps.cache-toolchain.outputs.cache-hit != 'true'
         run: |
+          echo "Toolchain cache not found, downloading and extracting..."
           mkdir -p toolchain
           cd toolchain
           for url in $(echo '${{ toJSON(matrix.task.config.toolchain_urls) }}' | jq -r '.[]'); do
             wget -q "$url"
           done
           cat * | tar -zxf - -i
+      
+      - name: Setup ccache
+        uses: hendrikmuhs/ccache-action@v1.2
+        with:
+          key: ccache-${{ matrix.task.project_key }}-${{ matrix.task.branch }}
+          max-size: 2G
+
       - name: Install Dependencies
         run: |
           sudo apt-get update
@@ -196,8 +194,6 @@ jobs:
           fi
           
           cd ../anykernel_patcher_repo
-          # A small hack to get kernel release info without the full out/ dir
-          # We'll use a generic name for now. Uploading compile.h would be more robust.
           kernel_release="Weekly-Build"
           final_name="${PROJECT_ZIP_NAME_PREFIX}_${kernel_release}_Patch-Kit_$(TZ='Asia/Hong_Kong' date '+%Y%m%d')"
           zip -r9 "../${final_name}.zip" . -x "*.zip" README.md LICENSE '.*' '*/.*'
