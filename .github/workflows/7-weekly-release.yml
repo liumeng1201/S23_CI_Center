@@ -11,14 +11,14 @@ on:
           - all
           - s23_sm8550
           - s24_sm8650
-          - s24fe_s5e9945
           - s25_sm8750
-          - s25e_sm8750
           - tabs10_mt6989
           - tabs9_sm8550
-          - z3_sm8350
+          - s25e_sm8750
           - z4_sm8475
           - z5_sm8550
+          - s24fe_s5e9945
+          - z3_sm8350
   schedule:
     - cron: '0 16 * * 0'
 
@@ -39,10 +39,8 @@ jobs:
         run: |
           PROJECT_KEYS_INPUT="${{ github.event.inputs.project_key }}"
           if [ "$PROJECT_KEYS_INPUT" == "all" ]; then
-            # Scheduled run or manual "all": get all project keys
             PROJECT_KEYS=$(jq -r 'keys | .[]' configs/projects.json)
           else
-            # Manual run for a single project
             PROJECT_KEYS=$PROJECT_KEYS_INPUT
           fi
 
@@ -70,12 +68,9 @@ jobs:
             done
 
             BASE_SUFFIX=$(echo "$BASE_BRANCH" | tr '[:lower:]' '[:upper:]' | sed 's/SUKI SUULTRA/SukiSUU/' | sed 's/MAIN/LKM/')
-            # For multi-project runs, this will be overwritten. We need to handle this differently.
-            # Let's create a map of package info.
             PACKAGE_INFO_JSON=$(jq -cn --arg pk "$PK" --argjson cfg "$PROJECT_CONFIG" --arg bb "$BASE_BRANCH" --arg bs "$BASE_SUFFIX" \
               '{ "project_key": $pk, "config": $cfg, "base_branch": $bb, "base_suffix": $bs }')
             
-            # For now, we only support single package info for manual runs.
             if [ "$PROJECT_KEYS_INPUT" != "all" ]; then
               echo "package_info=$(echo "$PACKAGE_INFO_JSON" | jq -c .)" >> $GITHUB_OUTPUT
             fi
@@ -156,7 +151,8 @@ jobs:
       - name: Upload Compiled Image
         uses: actions/upload-artifact@v4
         with:
-          name: compiled-images-${{ matrix.task.project_key }}
+          # FIX: Make artifact name unique for each parallel job
+          name: image-${{ matrix.task.project_key }}-${{ matrix.task.suffix }}
           path: Image_${{ matrix.task.suffix }}
 
   # Job 3: Package everything and create the release
@@ -184,7 +180,7 @@ jobs:
       - name: Download all compiled images
         uses: actions/download-artifact@v4
         with:
-          name: compiled-images-${{ fromJson(needs.prepare-matrix.outputs.package_info).project_key }}
+          # FIX: Download all artifacts by not specifying a name
           path: compiled-images
       - name: Create Patches and Package
         id: package
@@ -195,27 +191,30 @@ jobs:
           BASE_BRANCH: ${{ needs.prepare-matrix.outputs.base_branch }}
           GH_TOKEN: ${{ secrets.GH_TOKEN }}
         run: |
-          cd compiled-images
+          # The downloaded artifacts will be in subdirectories, move them up
+          find compiled-images -type f -name 'Image_*' -exec mv {} . \;
+
           mv "Image_${BASE_SUFFIX}" "Image_Base"
           
           echo "--- Creating bsdiff patches ---"
           pip install bsdiff4
-          mkdir -p ../patches
+          mkdir -p ./patches
           for image_file in Image_*; do
+            [ "$image_file" == "Image_Base" ] && continue
             suffix=$(echo "$image_file" | sed 's/Image_//')
             branch_name=$(echo "$suffix" | tr '[:upper:]' '[:lower:]' | sed 's/sukisuu/sukisuultra/' | sed 's/lkm/main/')
             echo "Creating patch for $suffix..."
-            python3 ../central_repo/scripts/bsdiff4_create.py "Image_Base" "$image_file" "../patches/${branch_name}.p"
+            python3 ./central_repo/scripts/bsdiff4_create.py "Image_Base" "$image_file" "./patches/${branch_name}.p"
           done
           
           echo "--- Preparing AnyKernel3 Patcher package ---"
-          mv Image_Base ../anykernel_patcher_repo/Image
-          echo "$BASE_SUFFIX" > ../anykernel_patcher_repo/base_kernel_name
-          if [ -d "../patches" ] && [ "$(ls -A ../patches)" ]; then
-            mv ../patches/* ../anykernel_patcher_repo/bs_patches/
+          mv Image_Base ./anykernel_patcher_repo/Image
+          echo "$BASE_SUFFIX" > ./anykernel_patcher_repo/base_kernel_name
+          if [ -d "./patches" ] && [ "$(ls -A ./patches)" ]; then
+            mv ./patches/* ./anykernel_patcher_repo/bs_patches/
           fi
           
-          cd ../anykernel_patcher_repo
+          cd ./anykernel_patcher_repo
           kernel_release="Weekly-Build"
           final_name="${PROJECT_ZIP_NAME_PREFIX}_${kernel_release}_Patch-Kit_$(TZ='Asia/Hong_Kong' date '+%Y%m%d')"
           zip -r9 "../${final_name}.zip" . -x "*.zip" README.md LICENSE '.*' '*/.*'
