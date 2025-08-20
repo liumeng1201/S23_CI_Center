@@ -17,7 +17,7 @@ SUPPORTED_KSU_BRANCHES_JSON="${PROJECT_SUPPORTED_KSU:?PROJECT_SUPPORTED_KSU is n
 PROJECT_KEY="${PROJECT_KEY:?PROJECT_KEY is not set}"
 
 # --- Script start ---
-# The script's working directory is kernel_repo, so toolchain is one level up.
+# FIX: The script's working directory is kernel_repo, so toolchain is one level up.
 TOOLCHAIN_BASE_PATH=$(realpath "../toolchain/${TOOLCHAIN_PATH_PREFIX}")
 
 # --- Setup Toolchain Environment ---
