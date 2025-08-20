@@ -28,7 +28,6 @@ jobs:
     runs-on: ubuntu-latest
     outputs:
       matrix: ${{ steps.set-matrix.outputs.matrix }}
-      package_info: ${{ steps.set-matrix.outputs.package_info }}
     steps:
       - name: Checkout Central Repo
         uses: actions/checkout@v4
@@ -38,9 +37,11 @@ jobs:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           PROJECT_KEYS_INPUT="${{ github.event.inputs.project_key }}"
-          if [ "$PROJECT_KEYS_INPUT" == "all" ]; then
+          if [ "$PROJECT_KEYS_INPUT" == "all" ] || [ -z "$PROJECT_KEYS_INPUT" ]; then
+            # Scheduled run or manual "all": get all project keys
             PROJECT_KEYS=$(jq -r 'keys | .[]' configs/projects.json)
           else
+            # Manual run for a single project
             PROJECT_KEYS=$PROJECT_KEYS_INPUT
           fi
 
@@ -48,14 +49,16 @@ jobs:
           
           for PK in $PROJECT_KEYS; do
             PROJECT_CONFIG=$(jq -c --arg P "$PK" '.[$P]' configs/projects.json)
+            if [ "$PROJECT_CONFIG" == "null" ]; then
+              echo "::error::Project key '$PK' not found in configs/projects.json"
+              exit 1
+            fi
             SUPPORTED_KSU=$(echo "$PROJECT_CONFIG" | jq -r '.supported_ksu | .[]')
             REPO_NAME=$(echo "$PROJECT_CONFIG" | jq -r '.repo')
 
             if git ls-remote --exit-code --heads "https://x-access-token:${GH_TOKEN}@github.com/${REPO_NAME}" main >/dev/null 2>&1; then
-              BASE_BRANCH="main"
               ALL_BRANCHES="main $SUPPORTED_KSU"
             else
-              BASE_BRANCH=$(echo "$SUPPORTED_KSU" | head -n 1)
               ALL_BRANCHES="$SUPPORTED_KSU"
             fi
 
@@ -66,18 +69,9 @@ jobs:
                 '{ "project_key": $pk, "branch": $b, "suffix": $s, "config": $cfg }')
               FINAL_MATRIX=$(echo "$FINAL_MATRIX" | jq -c ". + [$JOB_JSON]")
             done
-
-            BASE_SUFFIX=$(echo "$BASE_BRANCH" | tr '[:lower:]' '[:upper:]' | sed 's/SUKI SUULTRA/SukiSUU/' | sed 's/MAIN/LKM/')
-            PACKAGE_INFO_JSON=$(jq -cn --arg pk "$PK" --argjson cfg "$PROJECT_CONFIG" --arg bb "$BASE_BRANCH" --arg bs "$BASE_SUFFIX" \
-              '{ "project_key": $pk, "config": $cfg, "base_branch": $bb, "base_suffix": $bs }')
-            
-            if [ "$PROJECT_KEYS_INPUT" != "all" ]; then
-              echo "package_info=$(echo "$PACKAGE_INFO_JSON" | jq -c .)" >> $GITHUB_OUTPUT
-            fi
           done
           
           echo "matrix=$(echo "$FINAL_MATRIX" | jq -c .)" >> $GITHUB_OUTPUT
-
 
   # Job 2: Build all branches in parallel based on the matrix
   build:
@@ -151,12 +145,12 @@ jobs:
       - name: Upload Compiled Image
         uses: actions/upload-artifact@v4
         with:
-          # FIX: Make artifact name unique for each parallel job
           name: image-${{ matrix.task.project_key }}-${{ matrix.task.suffix }}
           path: Image_${{ matrix.task.suffix }}
 
   # Job 3: Package everything and create the release
   package-and-release:
+    # This job will only run for single-project manual triggers.
     if: github.event_name == 'workflow_dispatch' && github.event.inputs.project_key != 'all'
     needs: [prepare-matrix, build]
     runs-on: ubuntu-latest
@@ -168,31 +162,44 @@ jobs:
       - name: Parse AnyKernel3 Repo URL
         id: parse_repo
         run: |
-          REPO_URL="${{ fromJson(needs.prepare-matrix.outputs.package_info).config.anykernel_repo }}"
-          REPO_PATH=$(echo "$REPO_URL" | sed 's|https://github.com/||' | sed 's|\.git||')
+          # Extract config from the first build task in the matrix
+          ANYKERNEL_REPO=$(echo '${{ needs.prepare-matrix.outputs.matrix }}' | jq -r '.[0].config.anykernel_repo')
+          REPO_PATH=$(echo "$ANYKERNEL_REPO" | sed 's|https://github.com/||' | sed 's|\.git||')
           echo "path=${REPO_PATH}" >> $GITHUB_OUTPUT
       - name: Checkout AnyKernel3 Patcher Branch
         uses: actions/checkout@v4
         with:
           repository: ${{ steps.parse_repo.outputs.path }}
-          ref: ${{ fromJson(needs.prepare-matrix.outputs.package_info).config.anykernel_branch }}-patcher
+          ref: ${{ fromJson(needs.prepare-matrix.outputs.matrix)[0].config.anykernel_branch }}-patcher
           path: anykernel_patcher_repo
       - name: Download all compiled images
         uses: actions/download-artifact@v4
         with:
-          # FIX: Download all artifacts by not specifying a name
           path: compiled-images
       - name: Create Patches and Package
         id: package
         env:
-          BASE_SUFFIX: ${{ needs.prepare-matrix.outputs.base_suffix }}
-          PROJECT_ZIP_NAME_PREFIX: ${{ fromJson(needs.prepare-matrix.outputs.package_info).config.zip_name_prefix }}
-          GITHUB_REPO: ${{ fromJson(needs.prepare-matrix.outputs.package_info).config.repo }}
-          BASE_BRANCH: ${{ needs.prepare-matrix.outputs.base_branch }}
+          MATRIX_JSON: ${{ needs.prepare-matrix.outputs.matrix }}
           GH_TOKEN: ${{ secrets.GH_TOKEN }}
         run: |
-          # The downloaded artifacts will be in subdirectories, move them up
+          # The downloaded artifacts are in subdirectories, move them up
           find compiled-images -type f -name 'Image_*' -exec mv {} . \;
+          
+          # Extract info from the first element of the matrix JSON
+          PROJECT_CONFIG=$(echo "$MATRIX_JSON" | jq -r '.[0].config')
+          PROJECT_KEY=$(echo "$MATRIX_JSON" | jq -r '.[0].project_key')
+          PROJECT_ZIP_NAME_PREFIX=$(echo "$PROJECT_CONFIG" | jq -r '.zip_name_prefix')
+          GITHUB_REPO=$(echo "$PROJECT_CONFIG" | jq -r '.repo')
+          
+          # Determine Base Branch and Suffix again
+          SUPPORTED_KSU=$(echo "$PROJECT_CONFIG" | jq -r '.supported_ksu | .[]')
+          if git ls-remote --exit-code --heads "https://x-access-token:${GH_TOKEN}@github.com/${GITHUB_REPO}" main >/dev/null 2>&1; then
+            BASE_BRANCH="main"
+            BASE_SUFFIX="LKM"
+          else
+            BASE_BRANCH=$(echo "$SUPPORTED_KSU" | head -n 1)
+            BASE_SUFFIX=$(echo "$BASE_BRANCH" | tr '[:lower:]' '[:upper:]' | sed 's/SUKI SUULTRA/SukiSUU/')
+          fi
 
           mv "Image_${BASE_SUFFIX}" "Image_Base"
           
