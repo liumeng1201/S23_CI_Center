@@ -89,7 +89,7 @@ jobs:
         uses: actions/cache@v4
         with:
           path: toolchain
-          key: Linux-toolchain-${{ matrix.task.project_key }}-${{ hashFiles('central_repo/configs/projects.json') }}
+          key: Linux-toolchain-${{ matrix.task.project_key }}
 
       - name: Download and Extract Toolchain
         if: steps.cache-toolchain.outputs.cache-hit != 'true'
