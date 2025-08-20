@@ -17,7 +17,7 @@ SUPPORTED_KSU_BRANCHES_JSON="${PROJECT_SUPPORTED_KSU:?PROJECT_SUPPORTED_KSU is n
 PROJECT_KEY="${PROJECT_KEY:?PROJECT_KEY is not set}"
 
 # --- Script start ---
-# FIX: The script's working directory is kernel_repo, so toolchain is one level up.
+# The script's working directory is kernel_repo, so toolchain is one level up.
 TOOLCHAIN_BASE_PATH=$(realpath "../toolchain/${TOOLCHAIN_PATH_PREFIX}")
 
 # --- Setup Toolchain Environment ---
@@ -110,7 +110,8 @@ else
 fi
 
 compile_kernel_for_branch "$BASE_BRANCH" "$BASE_SUFFIX"
-mv "./Image_${BASE_SUFFIX}" "./Image_Base"
+# FIX: Use correct path to the compiled image in the parent directory
+mv "../Image_${BASE_SUFFIX}" "../Image_Base"
 
 # 2. Compile other variants for patching
 for branch in "${OTHER_BRANCHES[@]}"; do
@@ -125,14 +126,14 @@ mkdir -p ../patches
 for branch in "${OTHER_BRANCHES[@]}"; do
     suffix=$(echo "$branch" | tr '[:lower:]' '[:upper:]' | sed 's/SUKI SUULTRA/SukiSUU/')
     echo "Creating patch for $suffix..."
-    # FIX: Correct path to central repo script
-    python3 ../central_repo/scripts/bsdiff4_create.py "./Image_Base" "./Image_${suffix}" "../patches/${branch}.p"
+    # FIX: Use correct paths for all files, which are in the parent directory
+    python3 ../central_repo/scripts/bsdiff4_create.py "../Image_Base" "../Image_${suffix}" "../patches/${branch}.p"
 done
 echo "--- Patches created successfully ---"
 
 # 4. Package the AnyKernel3 zip
 echo "--- Preparing AnyKernel3 Patcher package ---"
-mv ./Image_Base ../anykernel_patcher_repo/Image
+mv ../Image_Base ../anykernel_patcher_repo/Image
 echo "$BASE_SUFFIX" > ../anykernel_patcher_repo/base_kernel_name
 if [ ${#OTHER_BRANCHES[@]} -gt 0 ]; then
     mv ../patches/* ../anykernel_patcher_repo/bs_patches/
