@@ -50,6 +50,9 @@ jobs:
         with:
           repository: ${{ matrix.project.config.repo }}
           path: kernel_repo
+          
+      - name: Install Dependencies
+        run: sudo apt-get update && sudo apt-get install -y libncurses5-dev bc bison flex libssl-dev p7zip-full lz4 cpio curl libelf-dev dwarves ccache jq lld
 
       # NEW STEP: Parse the full repo URL to get the 'owner/repo' format
       - name: Parse AnyKernel3 Repo URL
@@ -83,9 +86,6 @@ jobs:
           done
           echo "Combining and extracting toolchain..."
           cat * | tar -zxf - -i
-
-      - name: Install Dependencies
-        run: sudo apt-get update && sudo apt-get install -y ibncurses5-dev bc bison flex libssl-dev p7zip-full lz4 cpio curl libelf-dev dwarves ccache jq lld
 
       - name: Run Weekly Build Script
         env:
