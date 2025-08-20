@@ -1,108 +1,197 @@
-name: 7. Weekly Differential Release
+name: 7. Weekly Differential Release (Parallel)
 on:
-  # Allows manual triggering from the Actions tab
   workflow_dispatch:
     inputs:
       project_key:
         description: 'Project Key to build (e.g., s23_sm8550). Leave empty to build all.'
         required: false
         default: ''
-  # Runs at 16:00 UTC every Sunday (which is 00:00 HKT on Monday)
   schedule:
     - cron: '0 16 * * 0'
 
 jobs:
+  # Job 1: Figure out which branches to build and create a matrix
   prepare-matrix:
     runs-on: ubuntu-latest
     outputs:
       matrix: ${{ steps.set-matrix.outputs.matrix }}
+      base_branch: ${{ steps.set-matrix.outputs.base_branch }}
+      base_suffix: ${{ steps.set-matrix.outputs.base_suffix }}
+      project_config: ${{ steps.set-matrix.outputs.project_config }}
+      project_key: ${{ steps.set-matrix.outputs.project_key }}
     steps:
       - name: Checkout Central Repo
         uses: actions/checkout@v4
       - name: Set up matrix
         id: set-matrix
         run: |
-          if [ -n "${{ github.event.inputs.project_key }}" ]; then
-            # Manual trigger for a single project
-            JSON_MATRIX=$(jq -c --arg PK "${{ github.event.inputs.project_key }}" '[.[$PK] | {key: $PK, config: .}]' configs/projects.json)
+          # Use the user input if provided, otherwise default to the first key in projects.json
+          PROJECT_KEY_INPUT="${{ github.event.inputs.project_key }}"
+          if [ -z "$PROJECT_KEY_INPUT" ]; then
+            PROJECT_KEY=$(jq -r 'keys[0]' configs/projects.json)
           else
-            # Scheduled trigger for all projects
-            JSON_MATRIX=$(jq -c '[to_entries[] | {key: .key, config: .value}]' configs/projects.json)
+            PROJECT_KEY=$PROJECT_KEY_INPUT
           fi
-          echo "matrix=${JSON_MATRIX}" >> $GITHUB_OUTPUT
+          
+          echo "Preparing matrix for project: $PROJECT_KEY"
+          PROJECT_CONFIG=$(jq -c --arg PK "$PROJECT_KEY" '.[$PK]' configs/projects.json)
+          SUPPORTED_KSU=$(echo "$PROJECT_CONFIG" | jq -r '.supported_ksu | .[]')
+          
+          # Check if 'main' branch exists in the repo to determine base
+          REPO_URL="https://github.com/$(echo "$PROJECT_CONFIG" | jq -r .repo)"
+          if git ls-remote --exit-code --heads "$REPO_URL" main >/dev/null 2>&1; then
+            BASE_BRANCH="main"
+            BASE_SUFFIX="LKM"
+            ALL_BRANCHES="main $SUPPORTED_KSU"
+          else
+            BASE_BRANCH=$(echo "$SUPPORTED_KSU" | head -n 1)
+            BASE_SUFFIX=$(echo "$BASE_BRANCH" | tr '[:lower:]' '[:upper:]' | sed 's/SUKI SUULTRA/SukiSUU/')
+            ALL_BRANCHES="$SUPPORTED_KSU"
+          fi
 
-  build-and-release:
+          # Create JSON matrix for build jobs
+          MATRIX="["
+          for BRANCH in $ALL_BRANCHES; do
+            SUFFIX_RAW=$(echo "$BRANCH" | tr '[:lower:]' '[:upper:]')
+            SUFFIX=$(echo "$SUFFIX_RAW" | sed 's/SUKI SUULTRA/SukiSUU/' | sed 's/MAIN/LKM/')
+            MATRIX+=$(jq -c --arg b "$BRANCH" --arg s "$SUFFIX" '{branch: $b, suffix: $s}')","
+          done
+          MATRIX=${MATRIX%?}"]" # Remove last comma and add closing bracket
+          
+          echo "matrix=$(echo $MATRIX | jq -c .)" >> $GITHUB_OUTPUT
+          echo "base_branch=$BASE_BRANCH" >> $GITHUB_OUTPUT
+          echo "base_suffix=$BASE_SUFFIX" >> $GITHUB_OUTPUT
+          echo "project_config=$PROJECT_CONFIG" >> $GITHUB_OUTPUT
+          echo "project_key=$PROJECT_KEY" >> $GITHUB_OUTPUT
+
+  # Job 2: Build all branches in parallel
+  build:
     needs: prepare-matrix
     runs-on: ubuntu-latest
     strategy:
       fail-fast: false
       matrix:
-        project: ${{ fromJson(needs.prepare-matrix.outputs.matrix) }}
+        target: ${{ fromJson(needs.prepare-matrix.outputs.matrix) }}
     
     steps:
       - name: Checkout Central Repo
         uses: actions/checkout@v4
         with:
           path: central_repo
-
       - name: Checkout Kernel Source Repo
         uses: actions/checkout@v4
         with:
-          repository: ${{ matrix.project.config.repo }}
+          repository: ${{ fromJson(needs.prepare-matrix.outputs.project_config).repo }}
+          ref: ${{ matrix.target.branch }}
           path: kernel_repo
-          
-      - name: Install Dependencies
-        run: sudo apt-get update && sudo apt-get install -y libncurses5-dev bc bison flex libssl-dev p7zip-full lz4 cpio curl libelf-dev dwarves ccache jq lld
-
-      # NEW STEP: Parse the full repo URL to get the 'owner/repo' format
-      - name: Parse AnyKernel3 Repo URL
-        id: parse_repo
-        run: |
-          REPO_URL="${{ matrix.project.config.anykernel_repo }}"
-          REPO_PATH=$(echo "$REPO_URL" | sed 's|https://github.com/||' | sed 's|\.git||')
-          echo "path=${REPO_PATH}" >> $GITHUB_OUTPUT
-
-      - name: Checkout AnyKernel3 Patcher Branch
-        uses: actions/checkout@v4
-        with:
-          # Use the parsed path from the previous step
-          repository: ${{ steps.parse_repo.outputs.path }}
-          # Dynamically create branch name, e.g., "sun" becomes "sun-patcher"
-          ref: ${{ matrix.project.config.anykernel_branch }}-patcher
-          path: anykernel_patcher_repo
-
       - name: Setup ccache
         uses: hendrikmuhs/ccache-action@v1.2
         with:
-          key: ccache-${{ matrix.project.key }}
-          max-size: 5G
-
+          key: ccache-${{ needs.prepare-matrix.outputs.project_key }}-${{ matrix.target.branch }}
+          max-size: 2G
       - name: Download and Extract Toolchain
         run: |
           mkdir -p toolchain
           cd toolchain
-          for url in $(echo '${{ toJSON(matrix.project.config.toolchain_urls) }}' | jq -r '.[]'); do
+          for url in $(echo '${{ toJSON(fromJson(needs.prepare-matrix.outputs.project_config).toolchain_urls) }}' | jq -r '.[]'); do
             wget -q "$url"
           done
-          echo "Combining and extracting toolchain..."
           cat * | tar -zxf - -i
-
-      - name: Run Weekly Build Script
+      - name: Install Dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            libncurses5-dev bc bison flex libssl-dev p7zip-full \
+            lz4 cpio curl libelf-dev dwarves ccache jq lld
+      - name: Run Single Branch Build Script
         env:
-          # Pass all project configs as environment variables
-          PROJECT_KEY: ${{ matrix.project.key }}
-          PROJECT_DEFCONFIG: ${{ matrix.project.config.defconfig }}
-          PROJECT_LOCALVERSION_BASE: ${{ matrix.project.config.localversion_base }}
-          PROJECT_LTO: ${{ matrix.project.config.lto }}
-          PROJECT_TOOLCHAIN_PATH_PREFIX: ${{ matrix.project.config.toolchain_path_prefix }}
-          PROJECT_TOOLCHAIN_PATH_EXPORTS: ${{ toJSON(matrix.project.config.toolchain_path_exports) }}
-          PROJECT_ZIP_NAME_PREFIX: ${{ matrix.project.config.zip_name_prefix }}
-          PROJECT_REPO: ${{ matrix.project.config.repo }}
-          PROJECT_VERSION_METHOD: ${{ matrix.project.config.version_method }}
-          PROJECT_EXTRA_HOST_ENV: ${{ matrix.project.config.extra_host_env }}
-          PROJECT_DISABLE_SECURITY: ${{ toJSON(matrix.project.config.disable_security) }}
-          PROJECT_SUPPORTED_KSU: ${{ toJSON(matrix.project.config.supported_ksu) }}
-          GH_TOKEN: ${{ secrets.GH_TOKEN }} # Use the same token for release
+          BRANCH_NAME: ${{ matrix.target.branch }}
+          VERSION_SUFFIX: ${{ matrix.target.suffix }}
+          PROJECT_KEY: ${{ needs.prepare-matrix.outputs.project_key }}
+          PROJECT_DEFCONFIG: ${{ fromJson(needs.prepare-matrix.outputs.project_config).defconfig }}
+          PROJECT_LOCALVERSION_BASE: ${{ fromJson(needs.prepare-matrix.outputs.project_config).localversion_base }}
+          PROJECT_LTO: ${{ fromJson(needs.prepare-matrix.outputs.project_config).lto }}
+          PROJECT_TOOLCHAIN_PATH_PREFIX: ${{ fromJson(needs.prepare-matrix.outputs.project_config).toolchain_path_prefix }}
+          PROJECT_TOOLCHAIN_PATH_EXPORTS: ${{ toJSON(fromJson(needs.prepare-matrix.outputs.project_config).toolchain_path_exports) }}
+          PROJECT_ZIP_NAME_PREFIX: ${{ fromJson(needs.prepare-matrix.outputs.project_config).zip_name_prefix }}
+          PROJECT_REPO: ${{ fromJson(needs.prepare-matrix.outputs.project_config).repo }}
+          PROJECT_VERSION_METHOD: ${{ fromJson(needs.prepare-matrix.outputs.project_config).version_method }}
+          PROJECT_EXTRA_HOST_ENV: ${{ fromJson(needs.prepare-matrix.outputs.project_config).extra_host_env }}
+          PROJECT_DISABLE_SECURITY: ${{ toJSON(fromJson(needs.prepare-matrix.outputs.project_config).disable_security) }}
         run: |
           cd kernel_repo
-          ../central_repo/scripts/build_weekly.sh
+          ../central_repo/scripts/build_parallel.sh
+      - name: Upload Compiled Image
+        uses: actions/upload-artifact@v4
+        with:
+          name: compiled-images-${{ needs.prepare-matrix.outputs.project_key }}
+          path: Image_${{ matrix.target.suffix }}
+
+  # Job 3: Package everything and create the release
+  package-and-release:
+    needs: [prepare-matrix, build]
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Central Repo
+        uses: actions/checkout@v4
+        with:
+          path: central_repo
+      - name: Parse AnyKernel3 Repo URL
+        id: parse_repo
+        run: |
+          REPO_URL="${{ fromJson(needs.prepare-matrix.outputs.project_config).anykernel_repo }}"
+          REPO_PATH=$(echo "$REPO_URL" | sed 's|https://github.com/||' | sed 's|\.git||')
+          echo "path=${REPO_PATH}" >> $GITHUB_OUTPUT
+      - name: Checkout AnyKernel3 Patcher Branch
+        uses: actions/checkout@v4
+        with:
+          repository: ${{ steps.parse_repo.outputs.path }}
+          ref: ${{ fromJson(needs.prepare-matrix.outputs.project_config).anykernel_branch }}-patcher
+          path: anykernel_patcher_repo
+      - name: Download all compiled images
+        uses: actions/download-artifact@v4
+        with:
+          name: compiled-images-${{ needs.prepare-matrix.outputs.project_key }}
+          path: compiled-images
+      - name: Create Patches and Package
+        id: package
+        env:
+          BASE_SUFFIX: ${{ needs.prepare-matrix.outputs.base_suffix }}
+          PROJECT_ZIP_NAME_PREFIX: ${{ fromJson(needs.prepare-matrix.outputs.project_config).zip_name_prefix }}
+          GITHUB_REPO: ${{ fromJson(needs.prepare-matrix.outputs.project_config).repo }}
+          BASE_BRANCH: ${{ needs.prepare-matrix.outputs.base_branch }}
+          GH_TOKEN: ${{ secrets.GH_TOKEN }}
+        run: |
+          cd compiled-images
+          mv "Image_${BASE_SUFFIX}" "Image_Base"
+          
+          echo "--- Creating bsdiff patches ---"
+          pip install bsdiff4
+          mkdir -p ../patches
+          for image_file in Image_*; do
+            suffix=$(echo "$image_file" | sed 's/Image_//')
+            branch_name=$(echo "$suffix" | tr '[:upper:]' '[:lower:]' | sed 's/sukisuu/sukisuultra/' | sed 's/lkm/main/')
+            echo "Creating patch for $suffix..."
+            python3 ../central_repo/scripts/bsdiff4_create.py "Image_Base" "$image_file" "../patches/${branch_name}.p"
+          done
+          
+          echo "--- Preparing AnyKernel3 Patcher package ---"
+          mv Image_Base ../anykernel_patcher_repo/Image
+          echo "$BASE_SUFFIX" > ../anykernel_patcher_repo/base_kernel_name
+          if [ -d "../patches" ] && [ "$(ls -A ../patches)" ]; then
+            mv ../patches/* ../anykernel_patcher_repo/bs_patches/
+          fi
+          
+          cd ../anykernel_patcher_repo
+          kernel_release="Weekly-Build"
+          final_name="${PROJECT_ZIP_NAME_PREFIX}_${kernel_release}_Patch-Kit_$(TZ='Asia/Hong_Kong' date '+%Y%m%d')"
+          zip -r9 "../${final_name}.zip" . -x "*.zip" README.md LICENSE '.*' '*/.*'
+          cd ..
+          UPLOAD_FILE_PATH=$(realpath "${final_name}.zip")
+          
+          echo "--- Publishing to GitHub Release ---"
+          TAG="weekly-release-$(TZ='Asia/Hong_Kong' date +%Y%m%d-%H%M)"
+          RELEASE_TITLE="周常更新 - ${PROJECT_ZIP_NAME_PREFIX} (并行多合一差分包 | $(TZ='Asia/Hong_Kong' date +'%Y-%m-%d'))"
+          RELEASE_NOTES="由 CI 在 $(TZ='Asia/Hong_Kong' date) 自动构建的周常差分更新包。刷入时可在 Recovery 中选择需要的内核版本。"
+          gh release create "$TAG" "$UPLOAD_FILE_PATH" --repo "$GITHUB_REPO" --title "$RELEASE_TITLE" --notes "$RELEASE_NOTES" --target "$BASE_BRANCH"
+
