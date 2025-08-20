@@ -51,10 +51,19 @@ jobs:
           repository: ${{ matrix.project.config.repo }}
           path: kernel_repo
 
+      # NEW STEP: Parse the full repo URL to get the 'owner/repo' format
+      - name: Parse AnyKernel3 Repo URL
+        id: parse_repo
+        run: |
+          REPO_URL="${{ matrix.project.config.anykernel_repo }}"
+          REPO_PATH=$(echo "$REPO_URL" | sed 's|https://github.com/||' | sed 's|\.git||')
+          echo "path=${REPO_PATH}" >> $GITHUB_OUTPUT
+
       - name: Checkout AnyKernel3 Patcher Branch
         uses: actions/checkout@v4
         with:
-          repository: ${{ matrix.project.config.anykernel_repo }}
+          # Use the parsed path from the previous step
+          repository: ${{ steps.parse_repo.outputs.path }}
           # Dynamically create branch name, e.g., "sun" becomes "sun-patcher"
           ref: ${{ matrix.project.config.anykernel_branch }}-patcher
           path: anykernel_patcher_repo
