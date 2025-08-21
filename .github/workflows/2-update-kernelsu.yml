@@ -7,7 +7,7 @@ on:
         description: '选择要更新的内核项目'
         required: true
         type: choice
-        options: [s23_sm8550, s24_sm8650, s25_sm8750, tabs10_mt6989, tabs9_sm8550, s25e_sm8750, z4_sm8475, z5_sm8550, s24fe_s5e9945, z3_sm8350]
+        options: [s23_sm8550, s24_sm8650, s25_sm8750, tabs10_mt6989, tabs9_sm8550, s25e_sm8750, z4_sm8475, z5_sm8550, s24_s5e9945, z3_sm8350]
       branch:
         description: '选择要更新的分支 (KernelSU 类型)'
         required: true
