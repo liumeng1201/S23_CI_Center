@@ -11,10 +11,10 @@ on:
         type: string
       do_release:
         required: true
-        type: string # Actions converts booleans to strings here
+        type: string # Actions 会将布尔值转为字符串
       is_prerelease:
         required: true
-        type: string # Actions converts booleans to strings here
+        type: string # Actions 会将布尔值转为字符串
     secrets:
       GH_TOKEN:
         required: true
@@ -23,20 +23,21 @@ jobs:
   build:
     runs-on: ubuntu-latest
     env:
+      # 核心环境变量，构建脚本会依赖它们
       CCACHE_DIR: "${{ github.workspace }}/.ccache"
       PROJECT_KEY: ${{ inputs.project_key }}
       BRANCH_NAME: ${{ inputs.branch_name }}
       DO_RELEASE: ${{ inputs.do_release }}
       IS_PRERELEASE_INPUT: ${{ inputs.is_prerelease }}
     steps:
-      - {uses: actions/checkout@v4}
-      - name: Install Dependencies
+      - uses: actions/checkout@v4
+
+      - name: 安装依赖项
         run: |
           sudo apt-get update
-          # --- FIX: Added lld package to ensure the linker is available ---
           sudo apt-get install -y build-essential git libncurses5-dev bc bison flex libssl-dev p7zip-full lz4 cpio curl libelf-dev dwarves ccache jq lld
       
-      - name: Parse Project Configuration
+      - name: 解析项目配置
         id: config
         run: |
           CONFIG_JSON=$(cat ${{ github.workspace }}/configs/projects.json | jq -r --arg PKEY "$PROJECT_KEY" '.[$PKEY]')
@@ -59,17 +60,11 @@ jobs:
           echo "PROJECT_EXTRA_HOST_ENV=$(echo $CONFIG_JSON | jq -r '.extra_host_env // "false"')" >> $GITHUB_ENV
           echo "PROJECT_DISABLE_SECURITY=$(echo $CONFIG_JSON | jq -c '.disable_security // []')" >> $GITHUB_ENV
 
-      - name: Checkout Kernel Repository
+      - name: Checkout 内核源码仓库
         uses: actions/checkout@v4
         with: {repository: "${{ env.PROJECT_REPO }}", ref: "${{ env.BRANCH_NAME }}", path: kernel_source, submodules: 'recursive'}
       
-      - name: Cache Toolchain
-        id: toolchain-cache
-        uses: actions/cache@v4
-        with: {path: kernel_source/toolchain, key: "${{ runner.os }}-toolchain-${{ env.PROJECT_KEY }}"}
-      
-      - name: Download and Extract Toolchain
-        if: steps.toolchain-cache.outputs.cache-hit != 'true'
+      - name: 下载并解压工具链
         working-directory: kernel_source
         run: |
           URLS=$(echo '${{ env.PROJECT_TOOLCHAIN_URLS }}' | jq -r '.[]')
@@ -84,35 +79,18 @@ jobs:
           cat $PART_FILES > toolchain.tar.gz
           mkdir -p ./toolchain && tar -xzvf toolchain.tar.gz -C ./toolchain/
           rm $PART_FILES toolchain.tar.gz
-          echo "--- Setting executable permissions for toolchain binaries ---"
+          echo "--- 为工具链二进制文件设置可执行权限 ---"
           find ./toolchain -type f -path "*/bin/*" -exec chmod +x {} \;
       
-      - name: Cache ccache
-        uses: actions/cache@v4
+      - name: 恢复 ccache 缓存
+        uses: actions/cache/restore@v4
         with:
           path: ${{ env.CCACHE_DIR }}
-          key: ${{ runner.os }}-ccache-${{ env.PROJECT_KEY }}-${{ env.BRANCH_NAME }}
+          # 使用项目名称作为前缀, 会拉取该项目最新的可用缓存进行恢复
           restore-keys: |
             ${{ runner.os }}-ccache-${{ env.PROJECT_KEY }}-
-
-      - name: Get AnyKernel3 Remote Commit Hash
-        id: get_ak3_hash
-        run: |
-          HASH=$(git ls-remote ${{ env.PROJECT_ANYKERNEL_REPO }} ${{ env.PROJECT_ANYKERNEL_BRANCH }} | cut -f1)
-          if [ -z "$HASH" ]; then echo "Error: Could not get remote commit hash for AnyKernel3."; exit 1; fi
-          echo "hash=$HASH" >> $GITHUB_OUTPUT
       
-      - name: Cache AnyKernel3 Repository
-        uses: actions/cache@v4
-        id: anykernel-cache
-        with:
-          path: anykernel_repo
-          key: anykernel-${{ env.PROJECT_KEY }}-${{ steps.get_ak3_hash.outputs.hash }}
-          restore-keys: |
-            anykernel-${{ env.PROJECT_KEY }}-
-      
-      - name: Checkout AnyKernel3 if cache not hit
-        if: steps.anykernel-cache.outputs.cache-hit != 'true'
+      - name: Checkout AnyKernel3 仓库
         uses: actions/checkout@v4
         with:
           repository: ${{ env.PROJECT_ANYKERNEL_REPO_SLUG }}
@@ -120,15 +98,15 @@ jobs:
           path: anykernel_repo
           fetch-depth: 1
       
-      - name: Setup KernelSU based on branch
+      - name: 根据分支设置 KernelSU
         working-directory: ./kernel_source
         run: |
           if [[ "${{ env.BRANCH_NAME }}" == "sukisuultra" ]]; then
             if [[ "${{ env.PROJECT_KEY }}" == "z3_sm8350" ]]; then
-              echo "--- Detected z3_sm8350 on sukisuultra branch, using SukiSU fork with version susfs-legacy ---"
+              echo "--- 检测到 z3_sm8350 的 sukisuultra 分支, 使用 susfs-legacy 版本的 SukiSU ---"
               curl -LSs "https://raw.githubusercontent.com/vc-teahouse/SukiSU-Ultra/main/kernel/setup.sh" | bash -s susfs-legacy
             else
-              echo "--- Using standard SukiSU-Ultra setup ---"
+              echo "--- 使用标准的 SukiSU-Ultra ---"
               curl -LSs "https://raw.githubusercontent.com/SukiSU-Ultra/SukiSU-Ultra/main/kernel/setup.sh" | bash -s susfs-main
             fi
           elif [[ "${{ env.BRANCH_NAME }}" == "mksu" ]]; then
@@ -137,12 +115,12 @@ jobs:
             curl -LSs "https://raw.githubusercontent.com/tiann/KernelSU/main/kernel/setup.sh" | bash -
           fi
 
-      - name: Setup ccache environment
+      - name: 设置 ccache 环境
         run: |
           echo "CCACHE_BASEDIR=${{ github.workspace }}/kernel_source" >> $GITHUB_ENV
           echo "CCACHE_SLOPPINESS=time_macros" >> $GITHUB_ENV
 
-      - name: Run Universal Build Script
+      - name: 运行通用构建脚本
         env: {GH_TOKEN: "${{ secrets.GH_TOKEN }}"}
         run: |
           cp scripts/build.sh ./kernel_source/
@@ -150,7 +128,15 @@ jobs:
           chmod +x ./build.sh
           ./build.sh
       
-      - name: Upload Build Artifacts
+      - name: 保存 ccache 缓存
+        if: always()
+        uses: actions/cache/save@v4
+        with:
+          path: ${{ env.CCACHE_DIR }}
+          # key 使用 run_id 保证每次运行都唯一, 从而确保任务结束后总是会保存新缓存
+          key: ${{ runner.os }}-ccache-${{ env.PROJECT_KEY }}-${{ github.run_id }}
+
+      - name: 上传构建产物
         if: always()
         uses: actions/upload-artifact@v4
         with:
