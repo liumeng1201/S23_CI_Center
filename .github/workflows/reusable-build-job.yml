@@ -82,14 +82,6 @@ jobs:
           echo "--- 为工具链二进制文件设置可执行权限 ---"
           find ./toolchain -type f -path "*/bin/*" -exec chmod +x {} \;
       
-      - name: 恢复 ccache 缓存
-        uses: actions/cache/restore@v4
-        with:
-          path: ${{ env.CCACHE_DIR }}
-          # 使用项目名称作为前缀, 会拉取该项目最新的可用缓存进行恢复
-          restore-keys: |
-            ${{ runner.os }}-ccache-${{ env.PROJECT_KEY }}-
-      
       - name: Checkout AnyKernel3 仓库
         uses: actions/checkout@v4
         with:
@@ -97,7 +89,17 @@ jobs:
           ref: ${{ env.PROJECT_ANYKERNEL_BRANCH }}
           path: anykernel_repo
           fetch-depth: 1
-      
+
+      - name: 设置 ccache 环境并恢复缓存
+        uses: actions/cache@v4
+        with:
+          path: ${{ env.CCACHE_DIR }}
+          # key 使用 run_id 保证每次运行都唯一, 从而确保任务结束后总是会保存新缓存
+          key: ${{ runner.os }}-ccache-${{ env.PROJECT_KEY }}-${{ github.run_id }}
+          # restore-keys 使用项目名称作为前缀, 会拉取该项目最新的可用缓存进行恢复
+          restore-keys: |
+            ${{ runner.os }}-ccache-${{ env.PROJECT_KEY }}-
+
       - name: 根据分支设置 KernelSU
         working-directory: ./kernel_source
         run: |
@@ -115,7 +117,7 @@ jobs:
             curl -LSs "https://raw.githubusercontent.com/tiann/KernelSU/main/kernel/setup.sh" | bash -
           fi
 
-      - name: 设置 ccache 环境
+      - name: 补充 ccache 环境变量
         run: |
           echo "CCACHE_BASEDIR=${{ github.workspace }}/kernel_source" >> $GITHUB_ENV
           echo "CCACHE_SLOPPINESS=time_macros" >> $GITHUB_ENV
@@ -128,14 +130,6 @@ jobs:
           chmod +x ./build.sh
           ./build.sh
       
-      - name: 保存 ccache 缓存
-        if: always()
-        uses: actions/cache/save@v4
-        with:
-          path: ${{ env.CCACHE_DIR }}
-          # key 使用 run_id 保证每次运行都唯一, 从而确保任务结束后总是会保存新缓存
-          key: ${{ runner.os }}-ccache-${{ env.PROJECT_KEY }}-${{ github.run_id }}
-
       - name: 上传构建产物
         if: always()
         uses: actions/upload-artifact@v4
