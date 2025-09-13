@@ -35,7 +35,7 @@
   "s24_sm8650": {
     "repo": "YuzakiKokuban/android_kernel_samsung_sm8650",
     "defconfig": "pineapple_gki_defconfig",
-    "localversion_base": "-android14-Kokuban-Elysia-BYG2",
+    "localversion_base": "-android14-Kokuban-Elysia-BYH2",
     "lto": "",
     "supported_ksu": [
       "sukisuultra",
@@ -316,7 +316,7 @@
   "s24_s5e9945": {
     "repo": "YuzakiKokuban/android_kernel_samsung_s5e9945",
     "defconfig": "s5e9945_gki_defconfig",
-    "localversion_base": "-android14-Kokuban-Haruka-BYF5",
+    "localversion_base": "-android14-Kokuban-Haruka-BYH2",
     "lto": "",
     "supported_ksu": [
       "sukisuultra",
