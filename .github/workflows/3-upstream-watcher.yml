@@ -2,7 +2,7 @@
 name: 3. Watch Upstream KernelSU (Matrix Powered)
 on:
   schedule:
-    - cron: '0 */24 * * *'
+    - cron: '0 */72 * * *'
   workflow_dispatch:
 
 jobs:
