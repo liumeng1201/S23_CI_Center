@@ -14,18 +14,126 @@
 ## 核心功能
 
 * **✨ 统一管理**: 在一个地方管理所有内核项目。不再需要在每个内核仓库中维护复杂的 CI 脚本。
-
 * **🚀 全面自动化**: 从检测上游更新、编译内核、创建 GitHub Release，到自动部署和重启推送服务，全程自动化。
-
 * **⚙️ 配置驱动**: 只需修改 `configs/projects.json` 文件，即可轻松添加、修改或移除内核项目，CI/CD 流程会自动适配。
-
 * **面板化操作**: 通过一个[网页管理面板](https://yuzakikokuban.github.io/Kokuban_Kernel_CI_Center/) (暂未正式上线) 即可触发构建、查看状态，无需深入了解 GitHub Actions。
-
 * **🔔 实时推送**: 内置一个基于 Flask 的轻量级推送服务器，可通过 Webhook 接收新版本发布通知，并立即推送到 Telegram 等平台。
-
 * **灵活的构建策略**: 支持自动触发的测试构建、一键触发的全部分支正式版发布，以及为节省带宽而设计的周常差分包构建。
 
 ## 架构概览
+
+```mermaid
+graph TB
+    %% 中央管理仓库部分
+    subgraph "中央管理仓库 (Kokuban_Kernel_CI_Center)"
+        A[GitHub Actions 工作流]
+        B[构建脚本 scripts/]
+        C[项目配置 configs/]
+        D[推送服务器代码 push_server/]
+        
+        A1[0-add-new-project.yml]
+        A2[1-setup-kernel-repos.yml]
+        A3[2-update-kernelsu.yml]
+        A4[3-upstream-watcher.yml]
+        A5[4-universal-build.yml]
+        A6[5-deploy-push-server.yml]
+        A7[6-release-all-branches.yml]
+        
+        C1[projects.json]
+        C2[upstream_commits.json]
+    end
+    
+    %% 内核源码仓库部分
+    subgraph "内核源码仓库 (多个)"
+        K1[内核仓库1<br/>android_kernel_xxx]
+        K2[内核仓库2<br/>android_kernel_yyy]
+        K3[内核仓库N<br/>...]
+        
+        K1A[源码分支<br/>main/ksu/mksu/sukisuultra]
+        K2A[源码分支]
+        K3A[源码分支]
+    end
+    
+    %% 推送服务器部分
+    subgraph "推送服务器 (自托管)"
+        P[Flask 应用]
+        P1[Webhook 接收器]
+        P2[消息格式化]
+        P3[Telegram Bot API]
+        P4[SQLite 数据库]
+        P5[配置管理]
+    end
+    
+    %% 外部服务
+    subgraph "外部服务"
+        T[Telegram]
+        G[GitHub Releases]
+        U[上游 KernelSU]
+    end
+    
+    %% 用户交互
+    subgraph "用户交互"
+        U1[开发者 Push 代码]
+        U2[管理面板操作]
+        U3[手动触发工作流]
+    end
+    
+    %% 数据流向
+    %% 内核仓库 -> 中央仓库
+    K1 -.->|repository_dispatch<br/>触发构建| A5
+    K2 -.->|repository_dispatch<br/>触发构建| A5
+    K3 -.->|repository_dispatch<br/>触发构建| A5
+    
+    %% 用户 -> 中央仓库
+    U1 --> K1
+    U2 --> A
+    U3 --> A
+    
+    %% 中央仓库内部关系
+    C1 --> A5
+    C2 --> A3
+    B --> A5
+    A1 --> C1
+    A2 --> K1
+    A2 --> K2
+    A2 --> K3
+    
+    %% 工作流关系
+    A5 --> A7
+    A3 --> K1
+    A3 --> K2
+    A3 --> K3
+    
+    %% 中央仓库 -> 推送服务器
+    D --> A6
+    A6 --> P
+    
+    %% 中央仓库 -> 发布
+    A5 --> G
+    A7 --> G
+    
+    %% 发布 -> 推送服务器
+    G -->|Webhook 通知| P1
+    
+    %% 推送服务器 -> 外部服务
+    P3 --> T
+    
+    %% 上游监控
+    U --> A3
+    U --> A4
+    
+    %% 样式
+    classDef central fill:#e1f5fe,stroke:#01579b,stroke-width:2px
+    classDef kernel fill:#f3e5f5,stroke:#4a148c,stroke-width:2px
+    classDef push fill:#e8f5e8,stroke:#1b5e20,stroke-width:2px
+    classDef external fill:#fff3e0,stroke:#e65100,stroke-width:2px
+    classDef user fill:#fce4ec,stroke:#880e4f,stroke-width:2px
+    
+    class A,B,C,D,A1,A2,A3,A4,A5,A6,A7,C1,C2 central
+    class K1,K2,K3,K1A,K2A,K3A kernel
+    class P,P1,P2,P3,P4,P5 push
+    class T,G,U external
+    class U1,U2,U3 user
 
 本系统由三个核心部分组成，协同工作：
 
