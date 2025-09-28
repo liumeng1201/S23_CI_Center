@@ -134,6 +134,7 @@ graph TB
     class P,P1,P2,P3,P4,P5 push
     class T,G,U external
     class U1,U2,U3 user
+```
 
 本系统由三个核心部分组成，协同工作：
 
