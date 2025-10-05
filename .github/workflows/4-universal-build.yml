@@ -89,4 +89,5 @@ jobs:
       is_prerelease: ${{ needs.prepare-inputs.outputs.is_prerelease }}
     secrets:
       GH_TOKEN: ${{ secrets.GH_TOKEN }}
+      ADMIN_TOKEN: ${{ secrets.ADMIN_TOKEN }}
 
