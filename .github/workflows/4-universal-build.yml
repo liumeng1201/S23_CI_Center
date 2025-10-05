@@ -28,31 +28,59 @@ on:
     types: [build-kernel]
 jobs:
   # 此任务负责解析不同的触发类型，并为下一步准备统一的输入参数
+  # 【新增】它现在还负责检查 push 构建开关
   prepare-inputs:
     runs-on: ubuntu-latest
     outputs:
+      run_build: ${{ steps.parse.outputs.run_build }}
       project_key: ${{ steps.parse.outputs.project_key }}
       branch_name: ${{ steps.parse.outputs.branch_name }}
       do_release: ${{ steps.parse.outputs.do_release }}
       is_prerelease: ${{ steps.parse.outputs.is_prerelease }}
     steps:
-      - name: Parse Trigger Event
+      # 【新增】检出仓库以读取配置文件
+      - name: Checkout Central Repo
+        uses: actions/checkout@v4
+
+      - name: Parse Trigger Event & Check Build Flag
         id: parse
         run: |
+          # 默认允许构建
+          echo "run_build=true" >> $GITHUB_OUTPUT
+
           if [ "${{ github.event_name }}" == "workflow_dispatch" ]; then
+            echo "Manual trigger detected. Build will run."
             echo "project_key=${{ github.event.inputs.project }}" >> $GITHUB_OUTPUT
             echo "branch_name=${{ github.event.inputs.branch }}" >> $GITHUB_OUTPUT
             echo "do_release=${{ github.event.inputs.do_release }}" >> $GITHUB_OUTPUT
             echo "is_prerelease=${{ github.event.inputs.is_prerelease }}" >> $GITHUB_OUTPUT
           else
-            echo "project_key=${{ github.event.client_payload.project }}" >> $GITHUB_OUTPUT
+            echo "Push-triggered event detected. Checking build flag..."
+            PROJECT_KEY="${{ github.event.client_payload.project }}"
+            
+            # 从 configs/projects.json 读取开关状态
+            PUSH_BUILD_ENABLED=$(jq -r --arg PKEY "$PROJECT_KEY" '.[$PKEY].push_build_enabled // "false"' configs/projects.json)
+
+            if [[ "$PUSH_BUILD_ENABLED" != "true" ]]; then
+              echo "::warning::Push builds are disabled for project '$PROJECT_KEY'. Skipping."
+              # 如果开关关闭，则设置 run_build 为 false
+              echo "run_build=false" >> $GITHUB_OUTPUT
+            else
+              echo "Push builds are enabled for project '$PROJECT_KEY'. Proceeding."
+            fi
+            
+            # 无论是否跳过，都输出参数以供日志查看
+            echo "project_key=$PROJECT_KEY" >> $GITHUB_OUTPUT
             echo "branch_name=${{ github.event.client_payload.branch }}" >> $GITHUB_OUTPUT
             echo "do_release=true" >> $GITHUB_OUTPUT
             echo "is_prerelease=true" >> $GITHUB_OUTPUT
           fi
+
   # 此任务调用可复用的构建工作流
   call-reusable-build:
     needs: prepare-inputs
+    # 【新增】只有在 prepare-inputs 任务允许时才运行
+    if: needs.prepare-inputs.outputs.run_build == 'true'
     uses: ./.github/workflows/reusable-build-job.yml
     with:
       project_key: ${{ needs.prepare-inputs.outputs.project_key }}
@@ -61,3 +89,4 @@ jobs:
       is_prerelease: ${{ needs.prepare-inputs.outputs.is_prerelease }}
     secrets:
       GH_TOKEN: ${{ secrets.GH_TOKEN }}
+

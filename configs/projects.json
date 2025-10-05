@@ -27,6 +27,7 @@
     "anykernel_repo": "https://github.com/YuzakiKokuban/AnyKernel3.git",
     "anykernel_branch": "kalama",
     "zip_name_prefix": "S23_kernel",
+    "push_build_enabled": false,
     "push_server": {
       "enabled": true,
       "webhook_url": "http://74.176.37.71:8080/webhook"
@@ -61,6 +62,7 @@
     "anykernel_repo": "https://github.com/YuzakiKokuban/AnyKernel3.git",
     "anykernel_branch": "pineapple",
     "zip_name_prefix": "S24_Snapdragon_kernel",
+    "push_build_enabled": false,
     "push_server": {
       "enabled": true,
       "webhook_url": "http://74.176.37.71:8080/webhook"
@@ -109,6 +111,7 @@
     "anykernel_repo": "https://github.com/YuzakiKokuban/AnyKernel3.git",
     "anykernel_branch": "sun",
     "zip_name_prefix": "S25_kernel",
+    "push_build_enabled": true,
     "push_server": {
       "enabled": true,
       "webhook_url": "http://74.176.37.71:8080/webhook"
@@ -153,6 +156,7 @@
     "anykernel_repo": "https://github.com/YuzakiKokuban/AnyKernel3.git",
     "anykernel_branch": "mt6989",
     "zip_name_prefix": "TabS10_kernel",
+    "push_build_enabled": false,
     "push_server": {
       "enabled": true,
       "webhook_url": "http://74.176.37.71:8080/webhook"
@@ -189,6 +193,7 @@
     "version_method": "param",
     "extra_host_env": false,
     "disable_security": [],
+    "push_build_enabled": false,
     "push_server": {
       "enabled": true,
       "webhook_url": "http://74.176.37.71:8080/webhook"
@@ -237,6 +242,7 @@
       "FIVE_CERT_USER",
       "FIVE_DEFAULT_HASH"
     ],
+    "push_build_enabled": false,
     "push_server": {
       "enabled": true,
       "webhook_url": "http://74.176.37.71:8080/webhook"
@@ -272,6 +278,7 @@
       "DEVICE_NAME_CN": "三星 Galaxy Z4 系列",
       "DEVICE_NAME_EN": "Samsung Galaxy Z4 Series"
     },
+    "push_build_enabled": false,
     "push_server": {
       "enabled": true,
       "webhook_url": "http://74.176.37.71:8080/webhook"
@@ -308,6 +315,7 @@
       "DEVICE_NAME_CN": "三星 Galaxy Z5 系列",
       "DEVICE_NAME_EN": "Galaxy Z5 Series"
     },
+    "push_build_enabled": false,
     "push_server": {
       "enabled": true,
       "webhook_url": "http://74.176.37.71:8080/webhook"
@@ -356,6 +364,7 @@
       "DEVICE_NAME_CN": "三星 Galaxy S24 Exynos 系列",
       "DEVICE_NAME_EN": "Samsung Galaxy S24 Exynos Series"
     },
+    "push_build_enabled": false,
     "push_server": {
       "enabled": true,
       "webhook_url": "http://74.176.37.71:8080/webhook"
@@ -400,6 +409,7 @@
       "DEVICE_NAME_CN": "三星Galaxy Z3 系列",
       "DEVICE_NAME_EN": "Samsung Galaxy Z3 Series"
     },
+    "push_build_enabled": false,
     "push_server": {
       "enabled": true,
       "webhook_url": "http://74.176.37.71:8080/webhook"
@@ -448,6 +458,7 @@
       "DEVICE_NAME_CN": "三星 Galaxy Tab S10 FE 系列",
       "DEVICE_NAME_EN": "Samsung Galaxy Tab S10 FE Series"
     },
+    "push_build_enabled": false,
     "push_server": {
       "enabled": true,
       "webhook_url": "http://74.176.37.71:8080/webhook"
@@ -485,9 +496,11 @@
       "DEVICE_NAME_CN": "三星 Galaxy Z6 系列",
       "DEVICE_NAME_EN": "Samsung Galaxy Z6 Series"
     },
+    "push_build_enabled": false,
     "push_server": {
       "enabled": true,
       "webhook_url": "http://74.176.37.71:8080/webhook"
     }
   }
 }
+
