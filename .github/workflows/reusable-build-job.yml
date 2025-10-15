@@ -106,7 +106,7 @@ jobs:
           if [[ "${{ env.BRANCH_NAME }}" == "sukisuultra" ]]; then
             if [[ "${{ env.PROJECT_KEY }}" == "z3_sm8350" ]]; then
               echo "--- 检测到 z3_sm8350 的 sukisuultra 分支, 使用 susfs-legacy 版本的 SukiSU ---"
-              curl -LSs "https://raw.githubusercontent.com/vc-teahouse/SukiSU-Ultra/main/kernel/setup.sh" | bash -s susfs-test-legacy
+              curl -LSs "https://raw.githubusercontent.com/vc-teahouse/SukiSU-Ultra/main/kernel/setup.sh" | bash -s susfs-legacy
             else
               echo "--- 使用标准的 SukiSU-Ultra ---"
               curl -LSs "https://raw.githubusercontent.com/SukiSU-Ultra/SukiSU-Ultra/main/kernel/setup.sh" | bash -s susfs-main
