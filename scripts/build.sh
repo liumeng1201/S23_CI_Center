@@ -166,6 +166,8 @@ echo "---out目录内容---"
 ls -al out/
 echo "---out/arch/arm64/boot目录内容---"
 ls -al out/arch/arm64/boot/
+echo "---out/arch/arm64/boot/dts目录内容---"
+ls -al out/arch/arm64/boot/dts
 echo "============================================================================"
 
 # 7. 打包
