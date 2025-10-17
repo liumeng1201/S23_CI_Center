@@ -88,12 +88,12 @@ fi
 
 # 1. 清理 & 应用 defconfig
 rm -rf out
-echo "" >> kernel_build_log.txt
-echo "---MAKE_ARGS内容---" >> kernel_build_log.txt
-echo ${MAKE_ARGS} >> kernel_build_log.txt
-echo "---MAIN_DEFCONFIG内容---" >> kernel_build_log.txt
-echo $MAIN_DEFCONFIG >> kernel_build_log.txt
-echo "" >> kernel_build_log.txt
+echo "============================================================================"
+echo "---MAKE_ARGS内容---"
+echo ${MAKE_ARGS}
+echo "---MAIN_DEFCONFIG内容---"
+echo $MAIN_DEFCONFIG
+echo "============================================================================"
 make ${MAKE_ARGS} $MAIN_DEFCONFIG
 
 # 2. 后处理配置
@@ -146,11 +146,12 @@ if [ "$VERSION_METHOD" == "file" ]; then echo -n > ./localversion; fi
 if [ $BUILD_STATUS -ne 0 ]; then echo "--- 内核编译失败！ ---"; exit 1; fi
 echo -e "\n--- 内核编译成功！ ---\n"
 
-echo "" >> kernel_build_log.txt
-echo "---out目录内容---" >> kernel_build_log.txt
-ls -al out/ >> kernel_build_log.txt
-echo "---out/arch/arm64/boot目录内容---" >> kernel_build_log.txt
-ls -al out/arch/arm64/boot/ >> kernel_build_log.txt
+echo "============================================================================"
+echo "---out目录内容---"
+ls -al out/
+echo "---out/arch/arm64/boot目录内容---"
+ls -al out/arch/arm64/boot/
+echo "============================================================================"
 
 # 7. 打包
 cd out
