@@ -136,6 +136,13 @@ if [ "$VERSION_METHOD" == "file" ]; then echo -n > ./localversion; fi
 if [ $BUILD_STATUS -ne 0 ]; then echo "--- 内核编译失败！ ---"; exit 1; fi
 echo -e "\n--- 内核编译成功！ ---\n"
 
+echo "" >> kernel_build_log.txt
+echo "加入一些额外编译结果输出" >> kernel_build_log.txt
+echo "---out目录内容---" >> kernel_build_log.txt
+ls out/ >> kernel_build_log.txt
+echo "---out/arch/arm64/boot目录内容---" >> kernel_build_log.txt
+ls out/arch/arm64/boot/ >> kernel_build_log.txt
+
 # 7. 打包
 cd out
 echo "--- 从缓存目录复制 AnyKernel3 ---"
