@@ -88,6 +88,12 @@ fi
 
 # 1. 清理 & 应用 defconfig
 rm -rf out
+echo "" >> kernel_build_log.txt
+echo "---MAKE_ARGS内容---" >> kernel_build_log.txt
+echo ${MAKE_ARGS} >> kernel_build_log.txt
+echo "---MAIN_DEFCONFIG内容---" >> kernel_build_log.txt
+echo $MAIN_DEFCONFIG >> kernel_build_log.txt
+echo "" >> kernel_build_log.txt
 make ${MAKE_ARGS} $MAIN_DEFCONFIG
 
 # 2. 后处理配置
@@ -129,6 +135,10 @@ echo "Build timestamp set to: $KBUILD_BUILD_TIMESTAMP"
 echo "--- 开始编译内核 (-j$(nproc)) ---"
 if command -v ccache &> /dev/null; then export CCACHE_EXEC=$(which ccache); ccache -M 5G; export PATH="/usr/lib/ccache:$PATH"; fi
 ccache -s
+echo "" >> kernel_build_log.txt
+echo "---MAKE_ARGS_BUILD内容---" >> kernel_build_log.txt
+echo ${MAKE_ARGS_BUILD} >> kernel_build_log.txt
+echo "" >> kernel_build_log.txt
 make -j$(nproc) ${MAKE_ARGS_BUILD} 2>&1 | tee kernel_build_log.txt
 BUILD_STATUS=${PIPESTATUS[0]}
 ccache -s
@@ -137,11 +147,10 @@ if [ $BUILD_STATUS -ne 0 ]; then echo "--- 内核编译失败！ ---"; exit 1; f
 echo -e "\n--- 内核编译成功！ ---\n"
 
 echo "" >> kernel_build_log.txt
-echo "加入一些额外编译结果输出" >> kernel_build_log.txt
 echo "---out目录内容---" >> kernel_build_log.txt
-ls out/ >> kernel_build_log.txt
+ls -al out/ >> kernel_build_log.txt
 echo "---out/arch/arm64/boot目录内容---" >> kernel_build_log.txt
-ls out/arch/arm64/boot/ >> kernel_build_log.txt
+ls -al out/arch/arm64/boot/ >> kernel_build_log.txt
 
 # 7. 打包
 cd out
