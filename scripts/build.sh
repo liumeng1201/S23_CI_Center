@@ -15,6 +15,21 @@ VERSION_METHOD="${PROJECT_VERSION_METHOD:-param}"
 EXTRA_HOST_ENV="${PROJECT_EXTRA_HOST_ENV:-false}"
 DISABLE_SECURITY_JSON="${PROJECT_DISABLE_SECURITY:-[]}"
 
+echo "============================================================================"
+echo "MAIN_DEFCONFIG="${MAIN_DEFCONFIG}
+echo "LOCALVERSION_BASE="${LOCALVERSION_BASE}
+echo "LTO="${LTO}
+echo "TOOLCHAIN_PATH_PREFIX="${TOOLCHAIN_PATH_PREFIX}
+echo "TOOLCHAIN_PATH_EXPORTS_JSON="${TOOLCHAIN_PATH_EXPORTS_JSON}
+echo "ZIP_NAME_PREFIX="${ZIP_NAME_PREFIX}
+echo "GITHUB_REPO="${GITHUB_REPO}
+echo "AUTO_RELEASE="${AUTO_RELEASE}
+echo "IS_PRERELEASE="${IS_PRERELEASE}
+echo "VERSION_METHOD="${VERSION_METHOD}
+echo "EXTRA_HOST_ENV="${EXTRA_HOST_ENV}
+echo "DISABLE_SECURITY_JSON="${DISABLE_SECURITY_JSON}
+echo "============================================================================"
+
 # --- 动态决定是否运行 patch_linux ---
 DO_PATCH_LINUX=false
 if [[ "$BRANCH_NAME" == "sukisuultra" ]]; then
